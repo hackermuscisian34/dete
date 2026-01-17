@@ -1,0 +1,182 @@
+2026/01/17 22:10:26 Details: Application starting...
+2026/01/17 22:10:26 GUI Error: TTM_ADDTOOL failed
+
+Stack:
+goroutine 1 [running, locked to thread]:
+runtime/debug.Stack()
+	C:/Program Files/Go/src/runtime/debug/stack.go:26 +0x5e
+github.com/lxn/walk.newErr(...)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/error.go:81
+github.com/lxn/walk.newError({0x7ff75a65a332, 0x12})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/error.go:85 +0x25
+github.com/lxn/walk.(*ToolTip).addTool(0x28?, 0x7ff75a71eca0?, 0x8?)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/tooltip.go:184 +0x96
+github.com/lxn/walk.(*ToolTip).AddTool(0xc00007a008, {0x7ff75a71eca0?, 0xc000078008?})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/tooltip.go:160 +0x34
+github.com/lxn/walk.(*WidgetBase).init(0xc000078008, {0x7ff75a647f20?, 0x7ff75a66226d?})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/widget.go:137 +0x117
+github.com/lxn/walk.initWindowWithCfg(0xc000105798)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/window.go:670 +0x61a
+github.com/lxn/walk.InitWindow(...)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/window.go:538
+github.com/lxn/walk.InitWidget({0x7ff75a71eca0, 0xc000078008}, {0x7ff75a71a3f8, 0xc00013a808}, {0x7ff75a66226d?, 0x1c?}, 0x50000000?, 0x10000?)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/widget.go:110 +0x105
+github.com/lxn/walk.NewCompositeWithStyle({0x7ff75a71a3f8, 0xc00013a808}, 0x0)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/composite.go:30 +0xbc
+github.com/lxn/walk.NewComposite(...)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/composite.go:45
+github.com/lxn/walk.(*FormBase).init(0xc00013a808, {0x277ee483928, 0xc00013a808})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/form.go:107 +0x69
+github.com/lxn/walk.initWindowWithCfg(0xc000105a80)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/window.go:662 +0x57a
+github.com/lxn/walk.NewMainWindowWithCfg(0xc000105da8)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/mainwindow.go:48 +0x134
+github.com/lxn/walk/declarative.MainWindow.Create({{{0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, ...}, ...})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/declarative/mainwindow.go:64 +0xee
+github.com/lxn/walk/declarative.MainWindow.Run({{{0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, ...}, ...})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/declarative/mainwindow.go:209 +0x50
+main.main()
+	C:/Users/alber/OneDrive/Scans/dete/apt-defender-system/helper-service/cmd/main.go:166 +0xb16
+2026/01/17 22:10:27 🔒 mTLS Enabled: Only trusted Pi connections allowed
+2026/01/17 22:10:27 ✅ APT Defender Helper Ready
+2026/01/17 22:12:25 Details: Application starting...
+2026/01/17 22:12:25 GUI Error: TTM_ADDTOOL failed
+
+Stack:
+goroutine 1 [running, locked to thread]:
+runtime/debug.Stack()
+	C:/Program Files/Go/src/runtime/debug/stack.go:26 +0x5e
+github.com/lxn/walk.newErr(...)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/error.go:81
+github.com/lxn/walk.newError({0x7ff75a65a332, 0x12})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/error.go:85 +0x25
+github.com/lxn/walk.(*ToolTip).addTool(0x28?, 0x7ff75a71eca0?, 0x8?)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/tooltip.go:184 +0x96
+github.com/lxn/walk.(*ToolTip).AddTool(0xc0000b0f08, {0x7ff75a71eca0?, 0xc00009b508?})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/tooltip.go:160 +0x34
+github.com/lxn/walk.(*WidgetBase).init(0xc00009b508, {0x7ff75a647f20?, 0x7ff75a66226d?})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/widget.go:137 +0x117
+github.com/lxn/walk.initWindowWithCfg(0xc000105798)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/window.go:670 +0x61a
+github.com/lxn/walk.InitWindow(...)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/window.go:538
+github.com/lxn/walk.InitWidget({0x7ff75a71eca0, 0xc00009b508}, {0x7ff75a71a3f8, 0xc00013a808}, {0x7ff75a66226d?, 0x1c?}, 0x50000000?, 0x10000?)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/widget.go:110 +0x105
+github.com/lxn/walk.NewCompositeWithStyle({0x7ff75a71a3f8, 0xc00013a808}, 0x0)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/composite.go:30 +0xbc
+github.com/lxn/walk.NewComposite(...)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/composite.go:45
+github.com/lxn/walk.(*FormBase).init(0xc00013a808, {0x1f1faeeef28, 0xc00013a808})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/form.go:107 +0x69
+github.com/lxn/walk.initWindowWithCfg(0xc000105a80)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/window.go:662 +0x57a
+github.com/lxn/walk.NewMainWindowWithCfg(0xc000105da8)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/mainwindow.go:48 +0x134
+github.com/lxn/walk/declarative.MainWindow.Create({{{0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, ...}, ...})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/declarative/mainwindow.go:64 +0xee
+github.com/lxn/walk/declarative.MainWindow.Run({{{0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, ...}, ...})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/declarative/mainwindow.go:209 +0x50
+main.main()
+	C:/Users/alber/OneDrive/Scans/dete/apt-defender-system/helper-service/cmd/main.go:166 +0xb16
+2026/01/17 22:12:26 🔒 mTLS Enabled: Only trusted Pi connections allowed
+2026/01/17 22:12:26 ✅ APT Defender Helper Ready
+2026/01/17 22:14:12 Details: Application starting...
+2026/01/17 22:14:12 GUI Error: TTM_ADDTOOL failed
+
+Stack:
+goroutine 1 [running, locked to thread]:
+runtime/debug.Stack()
+	C:/Program Files/Go/src/runtime/debug/stack.go:26 +0x5e
+github.com/lxn/walk.newErr(...)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/error.go:81
+github.com/lxn/walk.newError({0x7ff6d063a332, 0x12})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/error.go:85 +0x25
+github.com/lxn/walk.(*ToolTip).addTool(0x28?, 0x7ff6d06feca0?, 0x8?)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/tooltip.go:184 +0x96
+github.com/lxn/walk.(*ToolTip).AddTool(0xc000074008, {0x7ff6d06feca0?, 0xc00009b508?})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/tooltip.go:160 +0x34
+github.com/lxn/walk.(*WidgetBase).init(0xc00009b508, {0x7ff6d0627f20?, 0x7ff6d064226d?})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/widget.go:137 +0x117
+github.com/lxn/walk.initWindowWithCfg(0xc000105798)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/window.go:670 +0x61a
+github.com/lxn/walk.InitWindow(...)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/window.go:538
+github.com/lxn/walk.InitWidget({0x7ff6d06feca0, 0xc00009b508}, {0x7ff6d06fa3f8, 0xc00013a808}, {0x7ff6d064226d?, 0x1c?}, 0x50000000?, 0x10000?)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/widget.go:110 +0x105
+github.com/lxn/walk.NewCompositeWithStyle({0x7ff6d06fa3f8, 0xc00013a808}, 0x0)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/composite.go:30 +0xbc
+github.com/lxn/walk.NewComposite(...)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/composite.go:45
+github.com/lxn/walk.(*FormBase).init(0xc00013a808, {0x116f380ef28, 0xc00013a808})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/form.go:107 +0x69
+github.com/lxn/walk.initWindowWithCfg(0xc000105a80)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/window.go:662 +0x57a
+github.com/lxn/walk.NewMainWindowWithCfg(0xc000105da8)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/mainwindow.go:48 +0x134
+github.com/lxn/walk/declarative.MainWindow.Create({{{0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, ...}, ...})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/declarative/mainwindow.go:64 +0xee
+github.com/lxn/walk/declarative.MainWindow.Run({{{0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, ...}, ...})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/declarative/mainwindow.go:209 +0x50
+main.main()
+	C:/Users/alber/OneDrive/Scans/dete/apt-defender-system/helper-service/cmd/main.go:166 +0xb16
+2026/01/17 22:14:13 🔒 mTLS Enabled: Only trusted Pi connections allowed
+2026/01/17 22:14:13 ✅ APT Defender Helper Ready
+2026/01/17 22:14:22 Details: Application starting...
+2026/01/17 22:14:22 GUI Error: TTM_ADDTOOL failed
+
+Stack:
+goroutine 1 [running, locked to thread]:
+runtime/debug.Stack()
+	C:/Program Files/Go/src/runtime/debug/stack.go:26 +0x5e
+github.com/lxn/walk.newErr(...)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/error.go:81
+github.com/lxn/walk.newError({0x7ff6d063a332, 0x12})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/error.go:85 +0x25
+github.com/lxn/walk.(*ToolTip).addTool(0x28?, 0x7ff6d06feca0?, 0x8?)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/tooltip.go:184 +0x96
+github.com/lxn/walk.(*ToolTip).AddTool(0xc000076008, {0x7ff6d06feca0?, 0xc000074008?})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/tooltip.go:160 +0x34
+github.com/lxn/walk.(*WidgetBase).init(0xc000074008, {0x7ff6d0627f20?, 0x7ff6d064226d?})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/widget.go:137 +0x117
+github.com/lxn/walk.initWindowWithCfg(0xc000105798)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/window.go:670 +0x61a
+github.com/lxn/walk.InitWindow(...)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/window.go:538
+github.com/lxn/walk.InitWidget({0x7ff6d06feca0, 0xc000074008}, {0x7ff6d06fa3f8, 0xc00013a808}, {0x7ff6d064226d?, 0x1c?}, 0x50000000?, 0x10000?)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/widget.go:110 +0x105
+github.com/lxn/walk.NewCompositeWithStyle({0x7ff6d06fa3f8, 0xc00013a808}, 0x0)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/composite.go:30 +0xbc
+github.com/lxn/walk.NewComposite(...)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/composite.go:45
+github.com/lxn/walk.(*FormBase).init(0xc00013a808, {0x247d0f10330, 0xc00013a808})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/form.go:107 +0x69
+github.com/lxn/walk.initWindowWithCfg(0xc000105a80)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/window.go:662 +0x57a
+github.com/lxn/walk.NewMainWindowWithCfg(0xc000105da8)
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/mainwindow.go:48 +0x134
+github.com/lxn/walk/declarative.MainWindow.Create({{{0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, ...}, ...})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/declarative/mainwindow.go:64 +0xee
+github.com/lxn/walk/declarative.MainWindow.Run({{{0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, {0x0, 0x0}, ...}, ...})
+	C:/Users/alber/go/pkg/mod/github.com/lxn/walk@v0.0.0-20210112085537-c389da54e794/declarative/mainwindow.go:209 +0x50
+main.main()
+	C:/Users/alber/OneDrive/Scans/dete/apt-defender-system/helper-service/cmd/main.go:166 +0xb16
+2026/01/17 22:14:23 🔒 mTLS Enabled: Only trusted Pi connections allowed
+2026/01/17 22:14:23 ✅ APT Defender Helper Ready
+2026/01/17 22:16:05 Details: Application starting...
+2026/01/17 22:16:06 🔒 mTLS Enabled: Only trusted Pi connections allowed
+2026/01/17 22:16:06 ✅ APT Defender Helper Ready
+2026/01/17 22:16:22 Details: Application starting...
+2026/01/17 22:16:23 🔒 mTLS Enabled: Only trusted Pi connections allowed
+2026/01/17 22:16:23 ✅ APT Defender Helper Ready
+2026/01/17 22:16:23 Server Start Error: listen tcp 127.0.0.1:7890: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+2026/01/17 22:18:10 Details: Application starting...
+2026/01/17 22:18:11 🔒 mTLS Enabled: Only trusted Pi connections allowed
+2026/01/17 22:18:11 ✅ APT Defender Helper Ready
+2026/01/17 22:18:11 Server Start Error: listen tcp 127.0.0.1:7890: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+2026/01/17 22:19:16 Details: Application starting...
+2026/01/17 22:19:17 🔒 mTLS Enabled: Only trusted Pi connections allowed
+2026/01/17 22:19:17 ✅ APT Defender Helper Ready
+2026/01/17 22:19:17 Server Start Error: listen tcp 127.0.0.1:7890: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+2026/01/17 22:20:44 Details: Application starting...
+2026/01/17 22:20:45 🔒 mTLS Enabled: Only trusted Pi connections allowed
+2026/01/17 22:20:45 ✅ APT Defender Helper Ready

@@ -26,13 +26,22 @@ class HelperClient:
         url = f"{self.base_url}/v1{endpoint}"
         
         # Prepare mTLS certificates
-        # In production, these should be loaded from settings
-        cert = (settings.ssl_certfile, settings.ssl_keyfile)
-        verify = False # For self-signed certs without a root CA in system store
+        # If cert_path is a tuple (cert, key), use it directly
+        # Otherwise if it's a string, we might need a key too
+        # Use client certificate only if explicitly provided
+        cert = self.cert_path
+        # If cert is None, we will not send a client certificate (no mTLS)
+        # This avoids SSL errors when the Helper service does not require client auth
+            
+        # For self-signed certs without a root CA in system store
+        # We disable verification on the client side
+        verify = False 
         
+        # First try WITH client certificate (mTLS)
         try:
+            logger.debug(f"Attempting {method} to {url} with mTLS authentication")
             async with httpx.AsyncClient(
-                timeout=self.timeout,
+                timeout=60.0,
                 cert=cert,
                 verify=verify 
             ) as client:
@@ -40,15 +49,38 @@ class HelperClient:
                 response.raise_for_status()
                 return response.json()
         
+        except httpx.ConnectError as e:
+            # Check if this is an SSL/TLS error
+            error_str = str(e)
+            if "TLSV1_ALERT_UNKNOWN_CA" in error_str or "SSL" in error_str:
+                logger.warning(f"mTLS authentication failed (server rejected client cert): {e}")
+                logger.info("Retrying connection WITHOUT client certificate...")
+                
+                # Retry WITHOUT client certificate
+                try:
+                    async with httpx.AsyncClient(
+                        timeout=60.0,
+                        verify=verify  # Still don't verify server cert
+                    ) as client:
+                        response = await client.request(method, url, **kwargs)
+                        response.raise_for_status()
+                        return response.json()
+                except Exception as retry_error:
+                    logger.error(f"Connection failed even without client cert: {retry_error}")
+                    raise Exception(f"Cannot reach device: {retry_error}")
+            else:
+                logger.error(f"Connection error (non-SSL): {e}")
+                raise Exception(f"Cannot reach device: {e}")
+        
         except httpx.TimeoutException:
             logger.error(f"Timeout connecting to Helper service: {url}")
             raise Exception("Device is not responding")
         except httpx.HTTPStatusError as e:
-            logger.error(f"Helper service error: {e}")
+            logger.error(f"Helper service HTTP error: {e.response.status_code} - {e}")
             raise Exception(f"Device error: {e.response.status_code}")
         except Exception as e:
-            logger.error(f"Helper service connection error: {e}")
-            raise Exception("Cannot reach device")
+            logger.error(f"Helper service connection error: {type(e).__name__}: {e}")
+            raise Exception(f"Cannot reach device: {e}")
     
     async def health_check(self) -> Dict:
         """Check if Helper service is reachable"""
@@ -105,3 +137,11 @@ class HelperClient:
         """Get active network connections"""
         result = await self._request("GET", "/network/connections")
         return result.get('connections', [])
+
+    async def start_scan(self, scan_type: str = "full") -> Dict:
+        """Trigger a security scan on device"""
+        return await self._request("POST", "/scan/start", json={"scan_type": scan_type})
+
+    async def get_scan_status(self) -> Dict:
+        """Get the progress of an active scan"""
+        return await self._request("GET", "/scan/status")

@@ -5,13 +5,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
-from api.auth import verify_token, TokenData
+from api.auth import verify_user, UserTokenData
 from database.db import get_db, Device, Action
-from connector.helper_client import HelperClient
 from config.settings import settings
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
+import sys
+import importlib.util
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -34,8 +36,35 @@ class ShutdownRequest(BaseModel):
 # Helpers
 # ============================================
 
-async def get_device_client(device_id: int, db: AsyncSession) -> HelperClient:
+async def get_device_client(device_id: int, db: AsyncSession):
     """Get initialized HelperClient for a device"""
+    # 1. Try standard import
+    try:
+        from connector.helper_client import HelperClient
+        logger.info("Successfully imported HelperClient via standard import")
+    except (ImportError, AttributeError) as e:
+        logger.warning(f"Standard import failed for HelperClient: {e}. Trying fallback...")
+        
+        # 2. Try absolute path fallback
+        try:
+            base_dir = Path(__file__).parent.parent.parent
+            client_path = base_dir / "connector" / "helper_client.py"
+            
+            if not client_path.exists():
+                raise ImportError(f"Cannot find {client_path}")
+                
+            spec = importlib.util.spec_from_file_location("dynamic_actions.helper_client", str(client_path))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            
+            if hasattr(module, "HelperClient"):
+                HelperClient = module.HelperClient
+            else:
+                raise AttributeError("HelperClient not found in module")
+        except Exception as fallback_err:
+            logger.error(f"Fallback import also failed for Actions: {fallback_err}")
+            raise HTTPException(status_code=500, detail="Internal system error: Action component load failed")
+
     result = await db.execute(select(Device).where(Device.id == device_id))
     device = result.scalar_one_or_none()
     
@@ -57,7 +86,7 @@ async def get_device_client(device_id: int, db: AsyncSession) -> HelperClient:
 async def kill_process(
     device_id: int,
     request: KillProcessRequest,
-    token_data: TokenData = Depends(verify_token),
+    token_data: UserTokenData = Depends(verify_user),
     db: AsyncSession = Depends(get_db)
 ):
     """Kill a process on target device"""
@@ -86,7 +115,7 @@ async def kill_process(
 async def quarantine_file(
     device_id: int,
     request: QuarantineFileRequest,
-    token_data: TokenData = Depends(verify_token)
+    token_data: UserTokenData = Depends(verify_user)
 ):
     """Quarantine a file on target device"""
     logger.warning(f"File quarantine requested: Device {device_id}, Path {request.path}")
@@ -110,7 +139,7 @@ async def quarantine_file(
     }
 
 @router.post("/devices/{device_id}/actions/lock")
-async def lock_device(device_id: int, token_data: TokenData = Depends(verify_token)):
+async def lock_device(device_id: int, token_data: UserTokenData = Depends(verify_user)):
     """Lock the target device screen"""
     logger.warning(f"Device lock requested: Device {device_id}")
     
@@ -133,7 +162,7 @@ async def lock_device(device_id: int, token_data: TokenData = Depends(verify_tok
 async def shutdown_device(
     device_id: int,
     request: ShutdownRequest,
-    token_data: TokenData = Depends(verify_token)
+    token_data: UserTokenData = Depends(verify_user)
 ):
     """Shutdown the target device"""
     logger.critical(f"Device shutdown requested: Device {device_id}")
@@ -155,7 +184,7 @@ async def shutdown_device(
     }
 
 @router.post("/devices/{device_id}/actions/isolate")
-async def isolate_device(device_id: int, token_data: TokenData = Depends(verify_token)):
+async def isolate_device(device_id: int, token_data: UserTokenData = Depends(verify_user)):
     """Disable network on target device"""
     logger.critical(f"Network isolation requested: Device {device_id}")
     
@@ -177,7 +206,7 @@ async def isolate_device(device_id: int, token_data: TokenData = Depends(verify_
     }
 
 @router.post("/devices/{device_id}/actions/restore-network")
-async def restore_network(device_id: int, token_data: TokenData = Depends(verify_token)):
+async def restore_network(device_id: int, token_data: UserTokenData = Depends(verify_user)):
     """Re-enable network on target device"""
     logger.info(f"Network restore requested: Device {device_id}")
     
@@ -200,7 +229,7 @@ async def restore_network(device_id: int, token_data: TokenData = Depends(verify
 async def get_action_history(
     device_id: int,
     limit: int = 50,
-    token_data: TokenData = Depends(verify_token)
+    token_data: UserTokenData = Depends(verify_user)
 ):
     """Get action history for device"""
     # TODO: Query actions table

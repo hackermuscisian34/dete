@@ -20,8 +20,8 @@ CREATE TABLE IF NOT EXISTS devices (
     UNIQUE(hostname, os)
 );
 
-CREATE INDEX idx_devices_status ON devices(status);
-CREATE INDEX idx_devices_last_seen ON devices(last_seen);
+CREATE INDEX IF NOT EXISTS idx_devices_status ON devices(status);
+CREATE INDEX IF NOT EXISTS idx_devices_last_seen ON devices(last_seen);
 
 -- ============================================
 -- THREATS TABLE
@@ -44,10 +44,10 @@ CREATE TABLE IF NOT EXISTS threats (
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_threats_device ON threats(device_id);
-CREATE INDEX idx_threats_severity ON threats(severity DESC);
-CREATE INDEX idx_threats_detected_at ON threats(detected_at DESC);
-CREATE INDEX idx_threats_dismissed ON threats(dismissed);
+CREATE INDEX IF NOT EXISTS idx_threats_device ON threats(device_id);
+CREATE INDEX IF NOT EXISTS idx_threats_severity ON threats(severity DESC);
+CREATE INDEX IF NOT EXISTS idx_threats_detected_at ON threats(detected_at DESC);
+CREATE INDEX IF NOT EXISTS idx_threats_dismissed ON threats(dismissed);
 
 -- ============================================
 -- SCANS TABLE
@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS scans (
     started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP,
     status TEXT DEFAULT 'running' CHECK(status IN ('running', 'completed', 'failed', 'cancelled')),
+    total_files INTEGER DEFAULT 0,
     files_checked INTEGER DEFAULT 0,
     threats_found INTEGER DEFAULT 0,
     scan_type TEXT DEFAULT 'full' CHECK(scan_type IN ('full', 'quick', 'custom')),
@@ -65,8 +66,8 @@ CREATE TABLE IF NOT EXISTS scans (
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_scans_device ON scans(device_id);
-CREATE INDEX idx_scans_started_at ON scans(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_scans_device ON scans(device_id);
+CREATE INDEX IF NOT EXISTS idx_scans_started_at ON scans(started_at DESC);
 
 -- ============================================
 -- NETWORK EVENTS TABLE
@@ -88,9 +89,9 @@ CREATE TABLE IF NOT EXISTS network_events (
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_network_device ON network_events(device_id);
-CREATE INDEX idx_network_timestamp ON network_events(timestamp DESC);
-CREATE INDEX idx_network_dst_ip ON network_events(dst_ip);
+CREATE INDEX IF NOT EXISTS idx_network_device ON network_events(device_id);
+CREATE INDEX IF NOT EXISTS idx_network_timestamp ON network_events(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_network_dst_ip ON network_events(dst_ip);
 
 -- ============================================
 -- ACTIONS TABLE
@@ -111,9 +112,9 @@ CREATE TABLE IF NOT EXISTS actions (
     FOREIGN KEY (threat_id) REFERENCES threats(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_actions_device ON actions(device_id);
-CREATE INDEX idx_actions_timestamp ON actions(timestamp DESC);
-CREATE INDEX idx_actions_threat ON actions(threat_id);
+CREATE INDEX IF NOT EXISTS idx_actions_device ON actions(device_id);
+CREATE INDEX IF NOT EXISTS idx_actions_timestamp ON actions(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_actions_threat ON actions(threat_id);
 
 -- ============================================
 -- FORENSIC TIMELINE TABLE
@@ -129,9 +130,9 @@ CREATE TABLE IF NOT EXISTS forensic_timeline (
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_forensic_device ON forensic_timeline(device_id);
-CREATE INDEX idx_forensic_timestamp ON forensic_timeline(timestamp DESC);
-CREATE INDEX idx_forensic_event_type ON forensic_timeline(event_type);
+CREATE INDEX IF NOT EXISTS idx_forensic_device ON forensic_timeline(device_id);
+CREATE INDEX IF NOT EXISTS idx_forensic_timestamp ON forensic_timeline(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_forensic_event_type ON forensic_timeline(event_type);
 
 -- ============================================
 -- YARA RULES TABLE
@@ -148,7 +149,7 @@ CREATE TABLE IF NOT EXISTS yara_rules (
     tags TEXT -- Comma-separated
 );
 
-CREATE INDEX idx_yara_enabled ON yara_rules(enabled);
+CREATE INDEX IF NOT EXISTS idx_yara_enabled ON yara_rules(enabled);
 
 -- ============================================
 -- PERSISTENCE ENTRIES TABLE
@@ -166,8 +167,8 @@ CREATE TABLE IF NOT EXISTS persistence_entries (
     FOREIGN KEY (device_id) REFERENCES devices(id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_persistence_device ON persistence_entries(device_id);
-CREATE INDEX idx_persistence_suspicious ON persistence_entries(is_suspicious);
+CREATE INDEX IF NOT EXISTS idx_persistence_device ON persistence_entries(device_id);
+CREATE INDEX IF NOT EXISTS idx_persistence_suspicious ON persistence_entries(is_suspicious);
 
 -- ============================================
 -- USER ACCOUNTS TABLE (Mobile App Users)
@@ -175,6 +176,7 @@ CREATE INDEX idx_persistence_suspicious ON persistence_entries(is_suspicious);
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_login TIMESTAMP,
     role TEXT DEFAULT 'user' CHECK(role IN ('admin', 'user'))
@@ -260,3 +262,17 @@ FROM actions a
 JOIN devices d ON a.device_id = d.id
 WHERE a.timestamp > datetime('now', '-24 hours')
 ORDER BY timestamp DESC;
+
+-- ============================================
+-- PAIRING TOKENS table
+-- ============================================
+CREATE TABLE IF NOT EXISTS pairing_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token TEXT UNIQUE NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    used_at DATETIME,
+    created_by INTEGER REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pairing_tokens_token ON pairing_tokens(token);

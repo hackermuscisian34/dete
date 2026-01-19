@@ -11,7 +11,9 @@ import {
     KeyboardAvoidingView,
     Platform,
     ActivityIndicator,
+    Alert,
 } from 'react-native';
+import piClient from '../api/piClient';
 import theme from '../theme/greenTheme';
 
 export default function LoginScreen({ navigation }) {
@@ -20,16 +22,23 @@ export default function LoginScreen({ navigation }) {
     const [loading, setLoading] = useState(false);
 
     const handleLogin = async () => {
+        if (!email || !password) {
+            Alert.alert('Error', 'Please enter email and password');
+            return;
+        }
+
         setLoading(true);
 
         try {
-            // TODO: Implement actual authentication
-            // For now, just navigate to main app
-            setTimeout(() => {
-                navigation.replace('Main');
-            }, 1000);
+            const response = await piClient.login(email, password);
+            if (response.success) {
+                navigation.replace('Devices');
+            } else {
+                Alert.alert('Login Failed', response.message || 'Incorrect email or password');
+            }
         } catch (error) {
-            alert('Login failed. Please try again.');
+            console.error('Login error:', error);
+            Alert.alert('Error', error.response?.data?.detail || 'Connection failed. Is the Pi running?');
         } finally {
             setLoading(false);
         }
@@ -89,9 +98,12 @@ export default function LoginScreen({ navigation }) {
                     </TouchableOpacity>
                 </View>
 
-                {/* Biometric Option (placeholder) */}
-                <TouchableOpacity style={styles.biometricButton}>
-                    <Text style={styles.biometricText}>Use Biometric Login</Text>
+                {/* Signup Option */}
+                <TouchableOpacity
+                    style={styles.signupButton}
+                    onPress={() => navigation.navigate('Signup')}
+                >
+                    <Text style={styles.signupText}>Don't have an account? Sign Up</Text>
                 </TouchableOpacity>
             </View>
         </KeyboardAvoidingView>
@@ -156,11 +168,11 @@ const styles = StyleSheet.create({
         color: theme.colors.textSecondary,
         fontSize: theme.typography.fontSize.sm,
     },
-    biometricButton: {
+    signupButton: {
         alignItems: 'center',
         padding: theme.spacing.md,
     },
-    biometricText: {
+    signupText: {
         color: theme.colors.primaryLight,
         fontSize: theme.typography.fontSize.md,
     },

@@ -10,19 +10,22 @@ import {
     StyleSheet,
     RefreshControl,
     ActivityIndicator,
-} from 'react';
+} from 'react-native';
 import piClient from '../api/piClient';
 import DeviceCard from '../components/DeviceCard';
 import theme from '../theme/greenTheme';
+import { useFocusEffect } from '@react-navigation/native';
 
 export default function DevicesScreen({ navigation }) {
     const [devices, setDevices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
-    useEffect(() => {
-        loadDevices();
-    }, []);
+    useFocusEffect(
+        React.useCallback(() => {
+            loadDevices();
+        }, [])
+    );
 
     const loadDevices = async () => {
         try {
@@ -72,26 +75,38 @@ export default function DevicesScreen({ navigation }) {
                     <Text style={styles.emptySubtext}>
                         Scan the QR code on your Raspberry Pi to add a device
                     </Text>
-                    <TouchableOpacity style={styles.addButton}>
+                    <TouchableOpacity
+                        style={styles.addButton}
+                        onPress={() => navigation.navigate('AddDevice')}
+                    >
                         <Text style={styles.addButtonText}>Add Device</Text>
                     </TouchableOpacity>
                 </View>
             ) : (
-                <FlatList
-                    data={devices}
-                    keyExtractor={(item) => item.id.toString()}
-                    renderItem={({ item }) => (
-                        <DeviceCard device={item} onPress={() => handleDevicePress(item)} />
-                    )}
-                    contentContainerStyle={styles.listContent}
-                    refreshControl={
-                        <RefreshControl
-                            refreshing={refreshing}
-                            onRefresh={onRefresh}
-                            tintColor={theme.colors.primary}
-                        />
-                    }
-                />
+                <>
+                    <FlatList
+                        data={devices}
+                        keyExtractor={(item) => item.id.toString()}
+                        renderItem={({ item }) => (
+                            <DeviceCard device={item} onPress={() => handleDevicePress(item)} />
+                        )}
+                        contentContainerStyle={styles.listContent}
+                        refreshControl={
+                            <RefreshControl
+                                refreshing={refreshing}
+                                onRefresh={onRefresh}
+                                tintColor={theme.colors.primary}
+                            />
+                        }
+                    />
+                    {/* Floating Add Button */}
+                    <TouchableOpacity
+                        style={styles.fab}
+                        onPress={() => navigation.navigate('AddDevice')}
+                    >
+                        <Text style={styles.fabText}>+</Text>
+                    </TouchableOpacity>
+                </>
             )}
         </View>
     );
@@ -124,6 +139,7 @@ const styles = StyleSheet.create({
     },
     listContent: {
         padding: theme.spacing.md,
+        paddingBottom: 100, // Extra padding for FAB
     },
     emptyContainer: {
         flex: 1,
@@ -154,5 +170,24 @@ const styles = StyleSheet.create({
         color: theme.colors.textOnPrimary,
         fontSize: theme.typography.fontSize.lg,
         fontWeight: theme.typography.fontWeight.bold,
+    },
+    fab: {
+        position: 'absolute',
+        right: 20,
+        bottom: 20,
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: theme.colors.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+        ...theme.shadows.lg,
+        elevation: 5,
+    },
+    fabText: {
+        color: theme.colors.textOnPrimary,
+        fontSize: 32,
+        fontWeight: 'bold',
+        marginTop: -3, // Visual alignment for "+"
     },
 });

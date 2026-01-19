@@ -5,25 +5,37 @@ import (
 	"log"
 	"os"
 
-	"path/filepath"
-	
-	"github.com/apt-defender/helper-service/internal/server"
+	"bytes"
+	"encoding/json"
+	"net"
+	"net/http"
+	"syscall"
+	"time"
+	"unsafe"
+
 	"github.com/apt-defender/helper-service/internal/config"
+	"github.com/apt-defender/helper-service/internal/server"
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
-	"time"
-	"syscall"
-	"unsafe"
 )
 
 const (
-	serviceName    = "APT Defender Helper"
-	serviceVersion = "1.0.0"
+	serviceName = "APT Defender Helper"
 )
 
 var (
-	user32           = syscall.NewLazyDLL("user32.dll")
-	procMessageBoxW  = user32.NewProc("MessageBoxW")
+	user32          = syscall.NewLazyDLL("user32.dll")
+	procMessageBoxW = user32.NewProc("MessageBoxW")
+
+	// GUI Pointers
+	mw             *walk.MainWindow
+	outTE          *walk.TextEdit
+	statusLbl      *walk.Label
+	ipEdit         *walk.LineEdit
+	codeEdit       *walk.LineEdit
+	pairBtn        *walk.PushButton
+	disconnectBtn  *walk.PushButton
+	pairingSection *walk.Composite
 )
 
 func messageBox(title, text string, style uintptr) {
@@ -52,165 +64,264 @@ func main() {
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		log.Printf("Config Error: %v", err)
-		// We continue with defaults or show error in GUI if possible, 
-		// but since we need config for server, we might fail later.
-		// For now, let's try to show the GUI even if config fails so user sees error.
 		if cfg == nil {
 			cfg = &config.Config{Host: "0.0.0.0", Port: 7890} // Fallback
 		}
 	}
 
-	var mw *walk.MainWindow
-	var outTE *walk.TextEdit
-	var statusLbl *walk.Label
+	// Always ensure we listen on all interfaces for the Pi Agent to connect
+	if cfg.Host == "127.0.0.1" || cfg.Host == "localhost" {
+		cfg.Host = "0.0.0.0"
+	}
+
+	log.Println("Details: Application starting...")
+
+	// THEME COLORS
+	bgLight := walk.RGB(250, 255, 250)
+	accentGreen := walk.RGB(46, 204, 113)
+	darkText := walk.RGB(44, 62, 80)
+	grayText := walk.RGB(127, 140, 141)
+	white := walk.RGB(255, 255, 255)
 
 	// Start server in background
 	srv := server.New(cfg)
 	go func() {
-		// Small delay to let GUI load
 		time.Sleep(1 * time.Second)
-		
-		logMsg := fmt.Sprintf("Starting HTTPS server on %s:%d\nCert: %s\n", cfg.Host, cfg.Port, cfg.CertFile)
-		
-		// Update GUI from background thread requires Synchronize
+		ips := getAllLocalIPs()
+		logMsg := fmt.Sprintf("Starting HTTPS server on %s:%d\nCert: %s\nDetected IPs: %v\n", cfg.Host, cfg.Port, cfg.CertFile, ips)
 		if mw != nil {
 			mw.Synchronize(func() {
 				outTE.SetText(logMsg)
-				statusLbl.SetText("RUNNING")
-				// Bright Green for status
-				statusLbl.SetTextColor(walk.RGB(0, 255, 0)) 
+				if cfg.IsPaired {
+					statusLbl.SetText("PAIRED & ACTIVE")
+					statusLbl.SetTextColor(accentGreen)
+					disconnectBtn.SetVisible(true)
+				} else {
+					statusLbl.SetText("WAITING FOR PAIRING")
+					statusLbl.SetTextColor(walk.RGB(241, 196, 15))
+					disconnectBtn.SetVisible(false)
+				}
 			})
 		}
-
 		if err := srv.Start(); err != nil {
 			log.Printf("Server Start Error: %v", err)
 			if mw != nil {
 				mw.Synchronize(func() {
 					outTE.SetText(outTE.Text() + "\nError: " + err.Error())
 					statusLbl.SetText("ERROR")
-					statusLbl.SetTextColor(walk.RGB(255, 0, 0)) // Red
+					statusLbl.SetTextColor(walk.RGB(255, 0, 0))
 				})
 			}
 		}
 	}()
 
-	// THEME COLORS - Professional Light Green (Modern/Clean)
-	bgLight := walk.RGB(250, 255, 250)    // Very faint green/white
-	accentGreen := walk.RGB(46, 204, 113) // Modern Flat Green (Emerald)
-	darkText := walk.RGB(44, 62, 80)      // Midnight Blue/Dark
-	grayText := walk.RGB(127, 140, 141)   // Concrete Gray
-	white := walk.RGB(255, 255, 255)
-
 	// Define GUI Layout
 	if _, err := (MainWindow{
-		AssignTo: &mw,
-		Title:    serviceName,
-		MinSize:  Size{400, 350},
-		Size:     Size{500, 450},
-		Layout:   VBox{Margins: Margins{20, 20, 20, 20}, Spacing: 15},
-		// Clean Light Background
+		AssignTo:   &mw,
+		Title:      serviceName,
+		MinSize:    Size{Width: 450, Height: 500},
+		Size:       Size{Width: 500, Height: 600},
+		Layout:     VBox{},
 		Background: SolidColorBrush{Color: bgLight},
-		Font: Font{Family: "Segoe UI", PointSize: 10}, 
+		Font:       Font{Family: "Segoe UI", PointSize: 10},
 		Children: []Widget{
-			// Header Section
-			Composite{
-				Layout: VBox{Spacing: 5},
-				Background: SolidColorBrush{Color: bgLight},
+			ScrollView{
+				Layout: VBox{Margins: Margins{Left: 20, Top: 20, Right: 20, Bottom: 20}, Spacing: 15},
 				Children: []Widget{
-					Label{
-						Text: "APT DEFENDER SYSTEM",
-						Font: Font{PointSize: 18, Bold: true, Family: "Segoe UI"},
-						TextColor: darkText,
-						Background: SolidColorBrush{Color: bgLight},
+					// Header
+					Composite{
+						Layout: VBox{Spacing: 5},
+						Children: []Widget{
+							Label{Text: "APT DEFENDER SYSTEM [V2.0]", Font: Font{PointSize: 18, Bold: true}, TextColor: darkText},
+							Label{Text: "Trusted Device Security Agent - PAIRING REQUIRED", TextColor: walk.RGB(231, 76, 60), Font: Font{PointSize: 9, Bold: true}},
+						},
 					},
-					Label{
-						Text: "Trusted Device Security Agent",
-						TextColor: grayText,
-						Font: Font{PointSize: 9},
-						Background: SolidColorBrush{Color: bgLight},
+
+					// PAIRING SECTION - AT TOP
+					Composite{
+						AssignTo: &pairingSection,
+						Layout:   Grid{Columns: 2, Spacing: 10},
+						Children: []Widget{
+							Label{
+								Text:       "CONNECTION REQUIRED",
+								Font:       Font{Bold: true, PointSize: 11},
+								TextColor:  walk.RGB(231, 76, 60), // Reddish for attention
+								ColumnSpan: 2,
+							},
+							Label{Text: "Pi IP Address:"},
+							LineEdit{AssignTo: &ipEdit, Text: "10.133.103.53"},
+							Label{Text: "Pairing Code:"},
+							LineEdit{AssignTo: &codeEdit, PasswordMode: true},
+							PushButton{
+								AssignTo:   &pairBtn,
+								Text:       "Establish Trusted Link",
+								ColumnSpan: 2,
+								OnClicked: func() {
+									piIP := ipEdit.Text()
+									code := codeEdit.Text()
+									if piIP == "" || code == "" {
+										messageBox("Input Error", "Please enter both Pi IP and Pairing Code", 0x30)
+										return
+									}
+									outTE.SetText(outTE.Text() + "\nInitiating pairing with " + piIP + "...")
+									pairBtn.SetEnabled(false)
+									go func() {
+										err := performPairing(piIP, code, cfg, outTE, statusLbl, mw)
+										mw.Synchronize(func() {
+											pairBtn.SetEnabled(true)
+											if err != nil {
+												messageBox("Pairing Failed", err.Error(), 0x10)
+											} else {
+												messageBox("Success", "Device paired successfully!", 0x40)
+											}
+										})
+									}()
+								},
+							},
+						},
 					},
-				},
-			},
-			VSpacer{Size: 10},
-			
-			// Status Card
-			Composite{
-				Layout: HBox{Spacing: 10},
-				Background: SolidColorBrush{Color: white},
-				Children: []Widget{
+
+					// Status Section
+					Composite{
+						Layout: HBox{Spacing: 10},
+						Children: []Widget{
+							Label{Text: "STATUS:", Font: Font{Bold: true}, TextColor: grayText},
+							Label{AssignTo: &statusLbl, Text: "INITIALIZING...", Font: Font{PointSize: 11, Bold: true}},
+						},
+					},
+
 					Label{
-						Text: "STATUS:",
-						Font: Font{Bold: true},
-						TextColor: grayText,
+						Text:      fmt.Sprintf("Secure Endpoint: https://%s:%d", cfg.Host, cfg.Port),
+						TextColor: accentGreen,
+						Font:      Font{PointSize: 9, Bold: true},
+					},
+
+					Label{Text: "Activity Log", Font: Font{Bold: true}, TextColor: darkText},
+					TextEdit{
+						AssignTo:   &outTE,
+						ReadOnly:   true,
+						VScroll:    true,
 						Background: SolidColorBrush{Color: white},
+						Font:       Font{Family: "Consolas", PointSize: 9},
+						MinSize:    Size{Width: 0, Height: 150},
 					},
-					Label{
-						AssignTo: &statusLbl,
-						Text:     "INITIALIZING...",
-						TextColor: walk.RGB(241, 196, 15), // Sunflower Yellow
-						Font:     Font{PointSize: 11, Bold: true},
-						Background: SolidColorBrush{Color: white},
+
+					PushButton{
+						AssignTo: &disconnectBtn,
+						Text:     "Disconnect from Pi Agent",
+						Visible:  cfg.IsPaired,
+						OnClicked: func() {
+							if walk.MsgBox(mw, "Disconnect", "Are you sure you want to disconnect this device from the Pi Agent? You will need to re-pair to restore monitoring.", walk.MsgBoxIconWarning|walk.MsgBoxYesNo) == walk.DlgCmdNo {
+								return
+							}
+
+							cfg.IsPaired = false
+							cfg.PiAgentIP = ""
+							cfg.Save(getConfigPath())
+
+							statusLbl.SetText("DISCONNECTED")
+							statusLbl.SetTextColor(walk.RGB(231, 76, 60))
+							disconnectBtn.SetVisible(false)
+							pairingSection.SetVisible(true)
+							outTE.SetText(outTE.Text() + "\n❌ Device disconnected and configuration reset.")
+						},
 					},
-				},
-			},
-			
-			Label{
-				Text: fmt.Sprintf("Secure Endpoint: https://%s:%d", cfg.Host, cfg.Port),
-				TextColor: accentGreen,
-				Font: Font{PointSize: 9, Bold: true},
-				Background: SolidColorBrush{Color: bgLight},
-			},
-			
-			VSpacer{Size: 20},
-			
-			Label{
-				Text: "Activity Log",
-				TextColor: darkText,
-				Font: Font{Bold: true},
-				Background: SolidColorBrush{Color: bgLight},
-			},
-			
-			// Modern Log Area (Clean White)
-			TextEdit{
-				AssignTo: &outTE,
-				ReadOnly: true,
-				VScroll:  true,
-				TextColor:  darkText,
-				Background: SolidColorBrush{Color: white},
-				Font:       Font{Family: "Consolas", PointSize: 9},
-				MinSize:    Size{0, 150},
-			},
-			
-			VSpacer{Size: 10},
-			
-			PushButton{
-				Text: "Minimize to Tray",
-				OnClicked: func() {
-					mw.Hide() // Hides window
+
+					PushButton{
+						Text:      "Minimize to Tray",
+						OnClicked: func() { mw.Hide() },
+					},
 				},
 			},
 		},
 	}.Run()); err != nil {
 		log.Printf("GUI Error: %v", err)
-		// Fallback to message box if GUI fails
-		messageBox("Startup Error", "Failed to open GUI: "+err.Error()+"\nCheck debug.log", 0x10)
+		messageBox("Startup Error", "Failed to open GUI: "+err.Error(), 0x10)
 	}
 }
 
+func performPairing(piIP, code string, cfg *config.Config, outTE *walk.TextEdit, statusLbl *walk.Label, mw *walk.MainWindow) error {
+	hostname, _ := os.Hostname()
+	localIP := getLocalIP()
+	pairReq := map[string]interface{}{
+		"pairing_token":     code,
+		"device_hostname":   hostname,
+		"device_ip":         localIP,
+		"device_os":         "windows",
+		"device_os_version": "10",
+	}
+	jsonBody, _ := json.Marshal(pairReq)
+	url := fmt.Sprintf("http://%s:8443/api/v1/auth/pair", piIP)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return fmt.Errorf("network error: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		var errResp struct {
+			Detail string `json:"detail"`
+		}
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return fmt.Errorf("pi rejected pairing: %s", errResp.Detail)
+	}
+
+	mw.Synchronize(func() {
+		outTE.SetText(outTE.Text() + "\n✅ PAIRING COMPLETE!")
+		statusLbl.SetText("PAIRED & ACTIVE")
+		statusLbl.SetTextColor(walk.RGB(46, 204, 113))
+		disconnectBtn.SetVisible(true)
+		cfg.PiAgentIP = piIP
+		cfg.PiAgentPort = 8443
+		cfg.IsPaired = true
+		cfg.Save(getConfigPath())
+	})
+	return nil
+}
+
+func getAllLocalIPs() []string {
+	var ips []string
+	addrs, _ := net.InterfaceAddrs()
+	for _, address := range addrs {
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				ips = append(ips, ipnet.IP.String())
+			}
+		}
+	}
+	return ips
+}
+
+func getLocalIP() string {
+	ips := getAllLocalIPs()
+	if len(ips) == 0 {
+		return "127.0.0.1"
+	}
+
+	// Prioritize common LAN ranges, avoid common VM ranges like 192.168.56.x
+	for _, ip := range ips {
+		// Prefer 10.x.x.x (matching the reported Pi IP range)
+		if len(ip) > 3 && ip[:3] == "10." {
+			return ip
+		}
+	}
+	for _, ip := range ips {
+		// Prefer 192.168.x.x but skip .56 (VirtualBox) and .232 (VMware common)
+		if len(ip) > 8 && ip[:8] == "192.168." {
+			if !bytes.Contains([]byte(ip), []byte(".56.")) && !bytes.Contains([]byte(ip), []byte(".232.")) {
+				return ip
+			}
+		}
+	}
+
+	return ips[0]
+}
 
 func getConfigPath() string {
-	// Check environment variable first
 	if path := os.Getenv("HELPER_CONFIG"); path != "" {
 		return path
 	}
-	
-	// Default locations
-	if isWindows() {
+	if os.PathSeparator == '\\' {
 		return "C:\\ProgramData\\APTDefender\\config.yaml"
 	}
 	return "/etc/apt-defender/config.yaml"
-}
-
-func isWindows() bool {
-	return os.PathSeparator == '\\' && filepath.Separator == '\\'
 }

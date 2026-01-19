@@ -5,8 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
-from api.auth import verify_token, TokenData
-from connector.supabase_client import cloud_sync
+from api.auth import verify_user, UserTokenData
+from database.db import get_db, Threat, Device, DeviceUser
+from sqlalchemy import select, desc, func
+from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 logger = logging.getLogger(__name__)
@@ -42,65 +44,88 @@ async def list_threats(
     dismissed: bool = False,
     min_severity: int = 1,
     limit: int = 100,
-    token_data: TokenData = Depends(verify_token)
+    db: AsyncSession = Depends(get_db),
+    token_data: UserTokenData = Depends(verify_user)
 ):
     """List threats across all devices or specific device"""
-    # TODO: Query threats table with filters
-    # TODO: Join with devices table for hostname
+    query = select(Threat, Device.hostname).join(Device, Threat.device_id == Device.id)
+    
+    # Filter by user association
+    query = query.join(DeviceUser, Device.id == DeviceUser.device_id).where(DeviceUser.user_id == token_data.user_id)
+    
+    if device_id:
+        query = query.where(Threat.device_id == device_id)
+    
+    query = query.where(Threat.dismissed == dismissed)
+    query = query.where(Threat.severity >= min_severity)
+    query = query.order_by(desc(Threat.detected_at)).limit(limit)
+    
+    result = await db.execute(query)
+    rows = result.all()
+    
+    threats = []
+    for threat, hostname in rows:
+        threats.append({
+            "id": threat.id,
+            "device_id": threat.device_id,
+            "device_hostname": hostname,
+            "detected_at": threat.detected_at.isoformat(),
+            "severity": threat.severity,
+            "type": threat.type,
+            "indicator": threat.indicator,
+            "explanation": threat.explanation,
+            "recommended_action": threat.recommended_action,
+            "action_taken": threat.action_taken,
+            "dismissed": threat.dismissed
+        })
     
     return {
         "success": True,
         "data": {
-            "threats": [
-                {
-                    "id": 1,
-                    "device_id": 1,
-                    "device_hostname": "LAPTOP-001",
-                    "detected_at": datetime.utcnow().isoformat(),
-                    "severity": 9,
-                    "type": "apt",
-                    "indicator": "C:\\Users\\bob\\Downloads\\malware.exe",
-                    "explanation": "A hacking tool was detected trying to communicate with an attacker's server",
-                    "recommended_action": "quarantine",
-                    "action_taken": None,
-                    "dismissed": False
-                }
-            ],
-            "total": 1
+            "threats": threats,
+            "total": len(threats)
         }
     }
 
 @router.get("/{threat_id}")
-async def get_threat(threat_id: int, token_data: TokenData = Depends(verify_token)):
+async def get_threat(
+    threat_id: int, 
+    db: AsyncSession = Depends(get_db),
+    token_data: UserTokenData = Depends(verify_user)
+):
     """Get detailed threat information"""
-    # TODO: Query threat by ID with full evidence
+    query = (
+        select(Threat, Device.hostname)
+        .join(Device, Threat.device_id == Device.id)
+        .join(DeviceUser, Device.id == DeviceUser.device_id)
+        .where(Threat.id == threat_id, DeviceUser.user_id == token_data.user_id)
+    )
+    result = await db.execute(query)
+    row = result.first()
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="Threat not found or access denied")
+    
+    threat, hostname = row
+    import json
+    evidence = json.loads(threat.evidence) if threat.evidence else {}
     
     return {
         "success": True,
         "data": {
-            "id": threat_id,
-            "device_id": 1,
-            "device_hostname": "LAPTOP-001",
-            "detected_at": datetime.utcnow().isoformat(),
-            "severity": 9,
-            "type": "apt",
-            "indicator": "C:\\Users\\bob\\Downloads\\malware.exe",
-            "hash_value": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "explanation": "A hacking tool was detected trying to communicate with an attacker's server. This is a serious security threat.",
-            "recommended_action": "quarantine",
-            "action_taken": None,
-            "dismissed": False,
-            "evidence": {
-                "yara_matches": ["CobaltStrike_Beacon"],
-                "network_connections": [
-                    {
-                        "dst_ip": "203.0.113.45",
-                        "dst_port": 443,
-                        "frequency": "Every 60 seconds"
-                    }
-                ],
-                "process_tree": "outlook.exe → invoice.exe"
-            }
+            "id": threat.id,
+            "device_id": threat.device_id,
+            "device_hostname": hostname,
+            "detected_at": threat.detected_at.isoformat(),
+            "severity": threat.severity,
+            "type": threat.type,
+            "indicator": threat.indicator,
+            "hash_value": threat.hash_value,
+            "explanation": threat.explanation,
+            "recommended_action": threat.recommended_action,
+            "action_taken": threat.action_taken,
+            "dismissed": threat.dismissed,
+            "evidence": evidence
         }
     }
 
@@ -108,7 +133,7 @@ async def get_threat(threat_id: int, token_data: TokenData = Depends(verify_toke
 async def dismiss_threat(
     threat_id: int,
     request: DismissThreatRequest,
-    token_data: TokenData = Depends(verify_token)
+    token_data: UserTokenData = Depends(verify_user)
 ):
     """Mark threat as false positive / dismissed"""
     logger.info(f"Threat {threat_id} dismissed: {request.reason}")
@@ -129,7 +154,7 @@ async def dismiss_threat(
     }
 
 @router.get("/stats/summary")
-async def get_threat_stats(token_data: TokenData = Depends(verify_token)):
+async def get_threat_stats(token_data: UserTokenData = Depends(verify_user)):
     """Get threat statistics summary"""
     # TODO: Aggregate threat data
     # TODO: Group by severity, type, device

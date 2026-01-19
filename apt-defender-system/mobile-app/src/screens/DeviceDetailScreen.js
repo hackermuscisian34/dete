@@ -10,6 +10,7 @@ import {
     StyleSheet,
     Alert,
     ActivityIndicator,
+    Linking,
 } from 'react-native';
 import piClient from '../api/piClient';
 import theme from '../theme/greenTheme';
@@ -18,10 +19,38 @@ export default function DeviceDetailScreen({ route, navigation }) {
     const { deviceId } = route.params;
     const [device, setDevice] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [scanStatus, setScanStatus] = useState(null);
+    const [polling, setPolling] = useState(false);
 
     useEffect(() => {
         loadDeviceDetails();
+        checkScanStatus();
     }, [deviceId]);
+
+    useEffect(() => {
+        let interval;
+        if (polling) {
+            interval = setInterval(checkScanStatus, 3000); // Poll every 3 seconds
+        }
+        return () => clearInterval(interval);
+    }, [polling]);
+
+    const checkScanStatus = async () => {
+        try {
+            const response = await piClient.getScanStatus(deviceId);
+            if (response.success && response.data) {
+                setScanStatus(response.data);
+                if (response.data.status === 'running') {
+                    setPolling(true);
+                } else {
+                    setPolling(false);
+                }
+            }
+        } catch (error) {
+            console.error('Error checking scan status:', error);
+            setPolling(false);
+        }
+    };
 
     const loadDeviceDetails = async () => {
         try {
@@ -38,11 +67,28 @@ export default function DeviceDetailScreen({ route, navigation }) {
 
     const handleScanNow = async () => {
         try {
-            await piClient.scanDevice(deviceId);
-            Alert.alert('Success', 'Scan started. Results will appear soon.');
+            const response = await piClient.scanDevice(deviceId);
+            if (response.success) {
+                Alert.alert('Success', 'Scan started. tracking progress...');
+                setPolling(true);
+                checkScanStatus();
+            }
         } catch (error) {
             Alert.alert('Error', 'Failed to start scan');
         }
+    };
+
+    const handleViewReport = () => {
+        if (!scanStatus?.scan_id) return;
+        const url = piClient.getScanReportUrl(deviceId, scanStatus.scan_id);
+        Linking.openURL(url);
+    };
+
+    const formatTime = (seconds) => {
+        if (!seconds || seconds <= 0) return 'calculating...';
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}m ${secs}s remaining`;
     };
 
     const handleLockDevice = () => {
@@ -112,6 +158,31 @@ export default function DeviceDetailScreen({ route, navigation }) {
         );
     };
 
+    const handleDeleteDevice = () => {
+        Alert.alert(
+            'Delete Device',
+            'This will remove this device from your account. You will need to re-pair it to monitor it again. Continue?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            const response = await piClient.unpairDevice(deviceId);
+                            if (response.success) {
+                                Alert.alert('Deleted', 'Device removed successfully');
+                                navigation.navigate('Devices'); // Go back to list
+                            }
+                        } catch (error) {
+                            Alert.alert('Error', 'Failed to delete device');
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
     if (loading) {
         return (
             <View style={styles.centerContainer}>
@@ -138,9 +209,58 @@ export default function DeviceDetailScreen({ route, navigation }) {
                 </Text>
             </View>
 
+            {/* Scan Progress (Only when active or recently completed) */}
+            {scanStatus && (
+                <View style={[styles.statusCard, { borderColor: scanStatus.status === 'running' ? theme.colors.primary : theme.colors.primaryDark }]}>
+                    <Text style={styles.sectionTitle}>
+                        {scanStatus.status === 'running' ? '🔍 Scanning Now...' : '✅ Latest Scan Result'}
+                    </Text>
+
+                    {scanStatus.status === 'running' && (
+                        <View style={styles.progressContainer}>
+                            <View style={styles.progressBar}>
+                                <View
+                                    style={[
+                                        styles.progressFill,
+                                        { width: `${(scanStatus.files_checked / (scanStatus.total_files || 1)) * 100}%` }
+                                    ]}
+                                />
+                            </View>
+                            <Text style={styles.progressText}>
+                                {scanStatus.files_checked} / {scanStatus.total_files} files checked
+                            </Text>
+                            <Text style={styles.timeText}>
+                                {formatTime(scanStatus.remaining_seconds)}
+                            </Text>
+                        </View>
+                    )}
+
+                    <View style={styles.statusRow}>
+                        <Text style={styles.statusLabel}>Detected Threats:</Text>
+                        <Text style={[styles.statusValue, { color: scanStatus.threats_found > 0 ? theme.colors.danger : theme.colors.success }]}>
+                            {scanStatus.threats_found}
+                        </Text>
+                    </View>
+
+                    {scanStatus.status === 'completed' && (
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.spacing.md }}>
+                            <TouchableOpacity style={[styles.reportButton, { flex: 1, marginRight: 5 }]} onPress={handleViewReport}>
+                                <Text style={styles.reportButtonText}>📄 HTML Report</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.reportButton, { flex: 1, marginLeft: 5 }]}
+                                onPress={() => Linking.openURL(`${piClient.getScanReportUrl(deviceId, scanStatus.scan_id)}/log`)}
+                            >
+                                <Text style={styles.reportButtonText}>📝 Log Report</Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
+                </View>
+            )}
+
             {/* Status Card */}
             <View style={styles.statusCard}>
-                <Text style={Styles.sectionTitle}>Status</Text>
+                <Text style={styles.sectionTitle}>Status</Text>
                 <View style={styles.statusRow}>
                     <Text style={styles.statusLabel}>Protection:</Text>
                     <Text style={[styles.statusValue, { color: theme.colors.success }]}>
@@ -183,6 +303,12 @@ export default function DeviceDetailScreen({ route, navigation }) {
                 <TouchableOpacity style={styles.dangerButton} onPress={handleShutdown}>
                     <Text style={styles.buttonText}>⏻ Shutdown</Text>
                 </TouchableOpacity>
+
+                <View style={{ marginTop: theme.spacing.xl, borderTopWidth: 1, borderTopColor: theme.colors.primaryDark, paddingTop: theme.spacing.md }}>
+                    <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteDevice}>
+                        <Text style={styles.buttonText}>🗑️ Delete Device</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
 
             {/* Quick Links */}
@@ -312,6 +438,14 @@ const styles = StyleSheet.create({
         borderRadius: theme.borderRadius.md,
         alignItems: 'center',
     },
+    deleteButton: {
+        backgroundColor: '#440000',
+        padding: theme.spacing.md,
+        borderRadius: theme.borderRadius.md,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: theme.colors.danger,
+    },
     buttonText: {
         color: theme.colors.textOnPrimary,
         fontSize: theme.typography.fontSize.lg,
@@ -329,5 +463,44 @@ const styles = StyleSheet.create({
     errorText: {
         fontSize: theme.typography.fontSize.lg,
         color: theme.colors.textSecondary,
+    },
+    progressContainer: {
+        marginVertical: theme.spacing.md,
+    },
+    progressBar: {
+        height: 10,
+        backgroundColor: theme.colors.primaryDark,
+        borderRadius: 5,
+        overflow: 'hidden',
+        marginBottom: theme.spacing.xs,
+    },
+    progressFill: {
+        height: '100%',
+        backgroundColor: theme.colors.primary,
+    },
+    progressText: {
+        fontSize: theme.typography.fontSize.sm,
+        color: theme.colors.textSecondary,
+        textAlign: 'center',
+    },
+    timeText: {
+        fontSize: theme.typography.fontSize.sm,
+        color: theme.colors.primaryLight,
+        textAlign: 'center',
+        fontWeight: 'bold',
+        marginTop: 4,
+    },
+    reportButton: {
+        backgroundColor: 'transparent',
+        borderWidth: 1,
+        borderColor: theme.colors.primary,
+        padding: theme.spacing.sm,
+        borderRadius: theme.borderRadius.md,
+        alignItems: 'center',
+        marginTop: theme.spacing.md,
+    },
+    reportButtonText: {
+        color: theme.colors.primary,
+        fontWeight: 'bold',
     },
 });

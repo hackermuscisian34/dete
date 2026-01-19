@@ -5,7 +5,10 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Dict, Any
 from datetime import datetime
-from api.auth import verify_token, TokenData
+from api.auth import verify_user, UserTokenData
+from database.db import get_db, Device, Threat, Scan, Action, DeviceUser
+from sqlalchemy import select, func, desc
+from sqlalchemy.ext.asyncio import AsyncSession
 import psutil
 import logging
 
@@ -17,7 +20,7 @@ router = APIRouter()
 # ============================================
 
 @router.get("/status")
-async def get_system_status(token_data: TokenData = Depends(verify_token)):
+async def get_system_status(token_data: UserTokenData = Depends(verify_user)):
     """Get Raspberry Pi system status"""
     
     # Get system metrics
@@ -41,35 +44,42 @@ async def get_system_status(token_data: TokenData = Depends(verify_token)):
     }
 
 @router.get("/alerts")
-async def get_unread_alerts(token_data: TokenData = Depends(verify_token)):
-    """Get unread alerts"""
-    # TODO: Query for active threats + recent actions
+async def get_unread_alerts(
+    db: AsyncSession = Depends(get_db),
+    token_data: UserTokenData = Depends(verify_user)
+):
+    """Get unread alerts from threats and system events"""
+    # Get active threats for user's devices
+    result = await db.execute(
+        select(Threat, Device.hostname)
+        .join(Device, Threat.device_id == Device.id)
+        .join(DeviceUser, Device.id == DeviceUser.device_id)
+        .where(Threat.dismissed == False, DeviceUser.user_id == token_data.user_id)
+        .order_by(desc(Threat.detected_at))
+        .limit(10)
+    )
+    rows = result.all()
+    
+    alerts = []
+    for threat, hostname in rows:
+        alerts.append({
+            "id": threat.id,
+            "type": "threat",
+            "severity": threat.severity,
+            "message": f"{threat.type.replace('_', ' ').title()} detected on {hostname}",
+            "timestamp": threat.detected_at.isoformat()
+        })
     
     return {
         "success": True,
         "data": {
-            "unread_count": 2,
-            "alerts": [
-                {
-                    "id": 1,
-                    "type": "threat",
-                    "severity": 9,
-                    "message": "Critical threat detected on LAPTOP-001",
-                    "timestamp": datetime.utcnow().isoformat()
-                },
-                {
-                    "id": 2,
-                    "type": "device_offline",
-                    "severity": 5,
-                    "message": "DESKTOP-002 is offline",
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-            ]
+            "unread_count": len(alerts),
+            "alerts": alerts
         }
     }
 
 @router.get("/config")
-async def get_configuration(token_data: TokenData = Depends(verify_token)):
+async def get_configuration(token_data: UserTokenData = Depends(verify_user)):
     """Get current system configuration"""
     # TODO: Query config table
     
@@ -87,7 +97,7 @@ async def get_configuration(token_data: TokenData = Depends(verify_token)):
 @router.put("/config")
 async def update_configuration(
     config: Dict[str, Any],
-    token_data: TokenData = Depends(verify_token)
+    token_data: UserTokenData = Depends(verify_user)
 ):
     """Update system configuration"""
     # TODO: Validate config values
@@ -103,37 +113,69 @@ async def update_configuration(
     }
 
 @router.get("/dashboard")
-async def get_dashboard_summary(token_data: TokenData = Depends(verify_token)):
-    """Get dashboard summary data"""
-    # TODO: Aggregate data for dashboard
-    # - Device summary
-    # - Active threats
-    # - Recent scans
-    # - System health
+async def get_dashboard_summary(
+    db: AsyncSession = Depends(get_db),
+    token_data: UserTokenData = Depends(verify_user)
+):
+    """Get dashboard summary data with real metrics"""
+    # Device counts (filtered by user)
+    total_devices = await db.execute(
+        select(func.count(Device.id))
+        .join(DeviceUser, Device.id == DeviceUser.device_id)
+        .where(DeviceUser.user_id == token_data.user_id)
+    )
+    online_devices = await db.execute(
+        select(func.count(Device.id))
+        .join(DeviceUser, Device.id == DeviceUser.device_id)
+        .where(Device.status == 'online', DeviceUser.user_id == token_data.user_id)
+    )
+    
+    # Threat counts (filtered by user)
+    active_threats = await db.execute(
+        select(func.count(Threat.id))
+        .join(DeviceUser, Threat.device_id == DeviceUser.device_id)
+        .where(Threat.dismissed == False, DeviceUser.user_id == token_data.user_id)
+    )
+    critical_threats = await db.execute(
+        select(func.count(Threat.id))
+        .join(DeviceUser, Threat.device_id == DeviceUser.device_id)
+        .where(Threat.dismissed == False, Threat.severity >= 8, DeviceUser.user_id == token_data.user_id)
+    )
+    
+    # Scans (filtered by user)
+    scans_today = await db.execute(
+        select(func.count(Scan.id))
+        .join(DeviceUser, Scan.device_id == DeviceUser.device_id)
+        .where(func.date(Scan.completed_at) == func.current_date(), DeviceUser.user_id == token_data.user_id)
+    )
+    
+    # System info
+    cpu_percent = psutil.cpu_percent()
+    mem = psutil.virtual_memory()
     
     return {
         "success": True,
         "data": {
             "devices": {
-                "total": 2,
-                "online": 1,
-                "offline": 1,
-                "with_threats": 1
+                "total": total_devices.scalar() or 0,
+                "online": online_devices.scalar() or 0,
+                "offline": (total_devices.scalar() or 0) - (online_devices.scalar() or 0),
+                "with_threats": 0 # TODO: Calculate this
             },
             "threats": {
-                "active": 3,
-                "critical": 1,
-                "last_24h": 2
+                "active": active_threats.scalar() or 0,
+                "critical": critical_threats.scalar() or 0,
+                "last_24h": 0 # TODO: Filter by time
             },
             "scans": {
-                "completed_today": 2,
+                "completed_today": scans_today.scalar() or 0,
                 "running": 0,
-                "next_scheduled": datetime.utcnow().isoformat()
+                "next_scheduled": None
             },
             "system_health": {
-                "status": "healthy",
-                "cpu_percent": 25,
-                "memory_percent": 60
+                "status": "healthy" if cpu_percent < 90 else "strained",
+                "cpu_percent": cpu_percent,
+                "memory_percent": mem.percent
             }
         }
     }

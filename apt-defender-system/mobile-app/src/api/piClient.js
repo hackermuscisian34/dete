@@ -4,7 +4,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_BASE_URL = 'https://192.168.1.10:8443/api/v1'; // TODO: Make configurable
+const API_BASE_URL = 'http://10.232.50.53:8443/api/v1'; // Updated to match PC IP
 
 class PiAPIClient {
     constructor() {
@@ -49,9 +49,39 @@ class PiAPIClient {
 
     async clearToken() {
         await AsyncStorage.removeItem('auth_token');
+        await AsyncStorage.removeItem('user_data');
+    }
+
+    async setUser(user) {
+        await AsyncStorage.setItem('user_data', JSON.stringify(user));
+    }
+
+    async getUser() {
+        const user = await AsyncStorage.getItem('user_data');
+        return user ? JSON.parse(user) : null;
     }
 
     // Authentication
+    async login(email, password) {
+        const response = await this.client.post('/auth/login', {
+            email,
+            password,
+        });
+
+        if (response.success && response.data.access_token) {
+            await this.setToken(response.data.access_token);
+            await this.setUser(response.data.user);
+        }
+
+        return response;
+    }
+
+    async register(email, password) {
+        return await this.client.post('/auth/register', {
+            email,
+            password,
+        });
+    }
     async pairDevice(pairingToken, deviceHostname) {
         const response = await this.client.post('/auth/pair', {
             pairing_token: pairingToken,
@@ -73,6 +103,10 @@ class PiAPIClient {
         return response;
     }
 
+    async generatePairingCode() {
+        return await this.client.post('/auth/generate-pairing-code');
+    }
+
     // Devices
     async getDevices() {
         return await this.client.get('/devices');
@@ -84,6 +118,14 @@ class PiAPIClient {
 
     async scanDevice(deviceId, scanType = 'full') {
         return await this.client.post(`/devices/${deviceId}/scan`, { scan_type: scanType });
+    }
+
+    async getScanStatus(deviceId) {
+        return await this.client.get(`/devices/${deviceId}/scan/status`);
+    }
+
+    getScanReportUrl(deviceId, scanId) {
+        return `${API_BASE_URL}/devices/${deviceId}/scan/${scanId}/report`;
     }
 
     async getDeviceProcesses(deviceId) {

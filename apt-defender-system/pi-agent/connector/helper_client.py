@@ -39,22 +39,6 @@ class HelperClient:
     async def _request(self, method: str, endpoint: str, **kwargs) -> Dict:
         """Make HTTP request to Helper service"""
         url = f"{self.base_url}/v1{endpoint}"
-<<<<<<< HEAD
-        
-        # Prepare mTLS certificates
-        # If cert_path is a tuple (cert, key), use it directly
-        # Otherwise if it's a string, we might need a key too
-        # Use client certificate only if explicitly provided
-        cert = self.cert_path
-        # If cert is None, we will not send a client certificate (no mTLS)
-        # This avoids SSL errors when the Helper service does not require client auth
-            
-        # For self-signed certs without a root CA in system store
-        # We disable verification on the client side
-        verify = False 
-        
-        # First try WITH client certificate (mTLS)
-=======
 
         cert = None
         if self.cert_path:
@@ -65,11 +49,10 @@ class HelperClient:
             verify = self.ca_cert_path
 
         # First try WITH client certificate (mTLS) if configured
->>>>>>> 0ba451690ecf6a7601979195acacecc80f940391
         try:
             logger.debug(f"Attempting {method} to {url} with mTLS authentication")
             async with httpx.AsyncClient(
-                timeout=60.0,
+                timeout=self.timeout,
                 cert=cert,
                 verify=verify,
             ) as client:
@@ -77,27 +60,6 @@ class HelperClient:
                 response.raise_for_status()
                 return response.json()
         
-<<<<<<< HEAD
-        except httpx.ConnectError as e:
-            # Check if this is an SSL/TLS error
-            error_str = str(e)
-            if "TLSV1_ALERT_UNKNOWN_CA" in error_str or "SSL" in error_str:
-                logger.warning(f"mTLS authentication failed (server rejected client cert): {e}")
-                logger.info("Retrying connection WITHOUT client certificate...")
-                
-                # Retry WITHOUT client certificate
-                try:
-                    async with httpx.AsyncClient(
-                        timeout=60.0,
-                        verify=verify  # Still don't verify server cert
-                    ) as client:
-                        response = await client.request(method, url, **kwargs)
-                        response.raise_for_status()
-                        return response.json()
-                except Exception as retry_error:
-                    logger.error(f"Connection failed even without client cert: {retry_error}")
-                    raise Exception(f"Cannot reach device: {retry_error}")
-=======
         except (httpx.ConnectError, httpx.TransportError, ssl.SSLError) as e:
             error_str = str(e)
             if "TLSV13_ALERT_CERTIFICATE_REQUIRED" in error_str or "certificate required" in error_str.lower():
@@ -117,7 +79,6 @@ class HelperClient:
             if "SSL" in error_str or "TLS" in error_str:
                 logger.error(f"TLS handshake error connecting to Helper service: {e}")
                 raise Exception(f"Cannot reach device: {e}")
->>>>>>> 0ba451690ecf6a7601979195acacecc80f940391
             else:
                 logger.error(f"Connection error (non-SSL): {e}")
                 raise Exception(f"Cannot reach device: {e}")

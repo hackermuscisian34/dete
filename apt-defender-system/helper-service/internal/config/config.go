@@ -12,6 +12,7 @@ type Config struct {
 	Port     int    `yaml:"port"`
 	CertFile string `yaml:"cert_file"`
 	KeyFile  string `yaml:"key_file"`
+	ClientCAFile string `yaml:"client_ca_file"`
 	LogFile  string `yaml:"log_file"`
 
 	// Security
@@ -32,6 +33,7 @@ func DefaultConfig() *Config {
 		Port:       7890,
 		CertFile:   "/etc/apt-defender/certs/helper.crt",
 		KeyFile:    "/etc/apt-defender/certs/helper.key",
+		ClientCAFile: "/etc/apt-defender/certs/ca.crt",
 		LogFile:    "/var/log/apt-defender/helper.log",
 		RateLimit:  100,
 		EnableMTLS: true,

@@ -83,18 +83,26 @@ func (s *Server) Start() error {
 	}
 
 	if s.config.EnableMTLS {
-		// Load CA cert (or use the server cert as CA if self-signed peer)
-		caCert, err := ioutil.ReadFile(s.config.CertFile)
+		// Load CA cert used to validate client certificates
+		caPath := s.config.ClientCAFile
+		if caPath == "" {
+			// Backward-compatible fallback: if not set, use CertFile (previous behavior)
+			caPath = s.config.CertFile
+		}
+
+		caCert, err := ioutil.ReadFile(caPath)
 		if err != nil {
-			return fmt.Errorf("failed to read CA cert: %v", err)
+			return fmt.Errorf("failed to read client CA cert: %v", err)
 		}
 
 		caCertPool := x509.NewCertPool()
-		caCertPool.AppendCertsFromPEM(caCert)
+		if ok := caCertPool.AppendCertsFromPEM(caCert); !ok {
+			return fmt.Errorf("failed to parse client CA cert PEM")
+		}
 
 		tlsConfig.ClientCAs = caCertPool
 		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
-		log.Printf("🔒 mTLS Enabled: Only trusted Pi connections allowed")
+		log.Printf(" mTLS Enabled: Only trusted Pi connections allowed")
 	}
 
 	server := &http.Server{

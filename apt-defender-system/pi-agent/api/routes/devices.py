@@ -75,8 +75,21 @@ async def get_device_client(device_id: int, db: AsyncSession):
 
     # Construct secure URL using the IP from database
     url = f"https://{device.ip_address}:{settings.helper_port}"
+<<<<<<< HEAD
     # Pass SSL certs from settings for mTLS (cert, key)
     return HelperClient(url)
+=======
+    cert_path = settings.helper_client_cert_path or None
+    key_path = settings.helper_client_key_path or None
+    ca_cert_path = settings.helper_ca_cert_path or None
+    return HelperClient(
+        url,
+        cert_path=cert_path,
+        key_path=key_path,
+        ca_cert_path=ca_cert_path,
+        verify_tls=settings.helper_tls_verify,
+    )
+>>>>>>> 0ba451690ecf6a7601979195acacecc80f940391
 
 # ============================================
 # API Endpoints
@@ -218,6 +231,11 @@ async def trigger_scan(
         # If it's already an HTTPException, re-raise it
         if isinstance(e, HTTPException):
             raise e
+<<<<<<< HEAD
+=======
+        if type(e).__name__ == "HelperTLSConfigurationError":
+            raise HTTPException(status_code=503, detail=str(e))
+>>>>>>> 0ba451690ecf6a7601979195acacecc80f940391
         raise HTTPException(status_code=502, detail=f"Failed to reach device: {str(e)}")
 
 @router.get("/{device_id}/scan/status")
@@ -324,6 +342,11 @@ async def get_processes(
         logger.error(f"Failed to fetch processes from device {device_id}: {e}")
         if isinstance(e, HTTPException):
             raise e
+<<<<<<< HEAD
+=======
+        if type(e).__name__ == "HelperTLSConfigurationError":
+            raise HTTPException(status_code=503, detail=str(e))
+>>>>>>> 0ba451690ecf6a7601979195acacecc80f940391
         raise HTTPException(status_code=502, detail=f"Failed to reach device: {str(e)}")
 
 @router.get("/{device_id}/connections")
@@ -357,6 +380,11 @@ async def get_connections(
         logger.error(f"Failed to fetch connections from device {device_id}: {e}")
         if isinstance(e, HTTPException):
             raise e
+<<<<<<< HEAD
+=======
+        if type(e).__name__ == "HelperTLSConfigurationError":
+            raise HTTPException(status_code=503, detail=str(e))
+>>>>>>> 0ba451690ecf6a7601979195acacecc80f940391
         raise HTTPException(status_code=502, detail=f"Failed to reach device: {str(e)}")
 
 @router.get("/{device_id}/timeline")

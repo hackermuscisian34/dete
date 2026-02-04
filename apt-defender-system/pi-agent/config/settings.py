@@ -89,6 +89,23 @@ class Settings(BaseSettings):
     helper_port: int = 7890
     helper_timeout_seconds: int = 30
     helper_heartbeat_interval_seconds: int = 60
+
+    helper_client_cert_path: str = Field(
+        default="",
+        validation_alias="HELPER_CLIENT_CERT"
+    )
+    helper_client_key_path: str = Field(
+        default="",
+        validation_alias="HELPER_CLIENT_KEY"
+    )
+    helper_ca_cert_path: str = Field(
+        default="",
+        validation_alias="HELPER_CA_CERT"
+    )
+    helper_tls_verify: bool = Field(
+        default=False,
+        validation_alias="HELPER_TLS_VERIFY"
+    )
     
 
 # Global settings instance

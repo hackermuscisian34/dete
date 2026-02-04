@@ -3,8 +3,13 @@ import os
 from pathlib import Path
 
 def repair():
+<<<<<<< HEAD
     # Detect base directory (project root where 'data' folder lives)
     base_dir = Path(__file__).parent.parent.parent
+=======
+    # Detect base directory (pi-agent folder)
+    base_dir = Path(__file__).parent.parent
+>>>>>>> 0ba451690ecf6a7601979195acacecc80f940391
     db_path = base_dir / "data" / "defender.db"
     
     if not db_path.exists():

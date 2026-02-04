@@ -3,15 +3,27 @@ Helper Service Client - Interface to communicate with PC Helper service
 """
 import httpx
 import logging
+import ssl
 from typing import Dict, List, Optional
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
+
+class HelperTLSConfigurationError(RuntimeError):
+    pass
+
 class HelperClient:
     """Client for communicating with Helper service on target PC"""
     
-    def __init__(self, helper_url: str, cert_path: Optional[str] = None):
+    def __init__(
+        self,
+        helper_url: str,
+        cert_path: Optional[str] = None,
+        key_path: Optional[str] = None,
+        ca_cert_path: Optional[str] = None,
+        verify_tls: Optional[bool] = None,
+    ):
         """
         Args:
             helper_url: Base URL of helper service (e.g., https://192.168.1.100:7890)
@@ -19,11 +31,15 @@ class HelperClient:
         """
         self.base_url = helper_url.rstrip('/')
         self.cert_path = cert_path
+        self.key_path = key_path
+        self.ca_cert_path = ca_cert_path
+        self.verify_tls = settings.helper_tls_verify if verify_tls is None else verify_tls
         self.timeout = settings.helper_timeout_seconds
     
     async def _request(self, method: str, endpoint: str, **kwargs) -> Dict:
         """Make HTTP request to Helper service"""
         url = f"{self.base_url}/v1{endpoint}"
+<<<<<<< HEAD
         
         # Prepare mTLS certificates
         # If cert_path is a tuple (cert, key), use it directly
@@ -38,17 +54,30 @@ class HelperClient:
         verify = False 
         
         # First try WITH client certificate (mTLS)
+=======
+
+        cert = None
+        if self.cert_path:
+            cert = (self.cert_path, self.key_path) if self.key_path else self.cert_path
+
+        verify = self.verify_tls
+        if self.ca_cert_path:
+            verify = self.ca_cert_path
+
+        # First try WITH client certificate (mTLS) if configured
+>>>>>>> 0ba451690ecf6a7601979195acacecc80f940391
         try:
             logger.debug(f"Attempting {method} to {url} with mTLS authentication")
             async with httpx.AsyncClient(
                 timeout=60.0,
                 cert=cert,
-                verify=verify 
+                verify=verify,
             ) as client:
                 response = await client.request(method, url, **kwargs)
                 response.raise_for_status()
                 return response.json()
         
+<<<<<<< HEAD
         except httpx.ConnectError as e:
             # Check if this is an SSL/TLS error
             error_str = str(e)
@@ -68,6 +97,27 @@ class HelperClient:
                 except Exception as retry_error:
                     logger.error(f"Connection failed even without client cert: {retry_error}")
                     raise Exception(f"Cannot reach device: {retry_error}")
+=======
+        except (httpx.ConnectError, httpx.TransportError, ssl.SSLError) as e:
+            error_str = str(e)
+            if "TLSV13_ALERT_CERTIFICATE_REQUIRED" in error_str or "certificate required" in error_str.lower():
+                if not self.cert_path:
+                    raise HelperTLSConfigurationError(
+                        "Helper service requires a client certificate (mTLS) but HELPER_CLIENT_CERT/HELPER_CLIENT_KEY are not configured"
+                    )
+                logger.error(f"Helper service required a client certificate but connection failed: {e}")
+                raise Exception(f"Cannot reach device: {e}")
+
+            if "TLSV1_ALERT_UNKNOWN_CA" in error_str or "unknown ca" in error_str.lower():
+                logger.error(f"Helper service rejected our certificate chain (unknown CA): {e}")
+                raise HelperTLSConfigurationError(
+                    "Helper service rejected the client certificate (unknown CA). Install/trust the CA that signed your client certificate on the Helper service"
+                )
+
+            if "SSL" in error_str or "TLS" in error_str:
+                logger.error(f"TLS handshake error connecting to Helper service: {e}")
+                raise Exception(f"Cannot reach device: {e}")
+>>>>>>> 0ba451690ecf6a7601979195acacecc80f940391
             else:
                 logger.error(f"Connection error (non-SSL): {e}")
                 raise Exception(f"Cannot reach device: {e}")

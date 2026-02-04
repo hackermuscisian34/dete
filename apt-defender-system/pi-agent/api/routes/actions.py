@@ -76,7 +76,16 @@ async def get_device_client(device_id: int, db: AsyncSession):
 
     # Construct secure URL using the IP from database
     url = f"https://{device.ip_address}:{settings.helper_port}"
-    return HelperClient(url)
+    cert_path = settings.helper_client_cert_path or None
+    key_path = settings.helper_client_key_path or None
+    ca_cert_path = settings.helper_ca_cert_path or None
+    return HelperClient(
+        url,
+        cert_path=cert_path,
+        key_path=key_path,
+        ca_cert_path=ca_cert_path,
+        verify_tls=settings.helper_tls_verify,
+    )
 
 # ============================================
 # API Endpoints
@@ -101,6 +110,8 @@ async def kill_process(
         result_status = "success" if response.get("success") else "failed"
     except Exception as e:
         logger.error(f"Failed to execute kill: {e}")
+        if type(e).__name__ == "HelperTLSConfigurationError":
+            raise HTTPException(status_code=503, detail=str(e))
         result_status = "failed"
         
     return {

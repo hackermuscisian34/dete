@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS scans (
     started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP,
     status TEXT DEFAULT 'running' CHECK(status IN ('running', 'completed', 'failed', 'cancelled')),
+    total_files INTEGER DEFAULT 0,
     files_checked INTEGER DEFAULT 0,
     threats_found INTEGER DEFAULT 0,
     scan_type TEXT DEFAULT 'full' CHECK(scan_type IN ('full', 'quick', 'custom')),

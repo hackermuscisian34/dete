@@ -3,7 +3,7 @@ Database models and initialization
 """
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, CheckConstraint
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, CheckConstraint, event
 from sqlalchemy.sql import func
 from config.settings import settings
 from pathlib import Path
@@ -56,6 +56,7 @@ class Scan(Base):
     started_at = Column(DateTime, server_default=func.now())
     completed_at = Column(DateTime)
     status = Column(String, default='running')
+    total_files = Column(Integer, default=0)
     files_checked = Column(Integer, default=0)
     threats_found = Column(Integer, default=0)
     scan_type = Column(String, default='full')
@@ -115,16 +116,51 @@ class YaraRule(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     description = Column(Text)
     author = Column(String)
+    author = Column(String)
     tags = Column(String)
+
+class User(Base):
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String, unique=True, nullable=False)
+    password_hash = Column(String, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    last_login = Column(DateTime)
+    role = Column(String, default='user')
+
+class PairingToken(Base):
+    __tablename__ = "pairing_tokens"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token = Column(String, unique=True, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime)
+    created_by = Column(Integer, ForeignKey('users.id'))
+
+class DeviceUser(Base):
+    __tablename__ = "device_users"
+    
+    device_id = Column(Integer, ForeignKey('devices.id', ondelete='CASCADE'), primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), primary_key=True)
+    access_level = Column(String, default='viewer')
+    granted_at = Column(DateTime, server_default=func.now())
 
 # ============================================
 # Database Engine and Session
 # ============================================
 
 engine = create_async_engine(
-    settings.database_url,
+    settings.final_database_url,
     echo=False,  # Set to True for SQL logging
 )
+
+@event.listens_for(engine.sync_engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 AsyncSessionLocal = async_sessionmaker(
     engine,
@@ -149,10 +185,20 @@ async def init_database():
         schema_sql = f.read()
     
     # Extract database path from URL
-    db_path = settings.database_url.split('////')[-1]
+    # Handle sqlite+aiosqlite:///path (3 slashes) or sqlite+aiosqlite:////path (4 slashes)
+    db_url = settings.final_database_url
+    if ":////" in db_url:
+        db_path = db_url.split(":////")[1]
+        if not db_path.startswith("/"):
+            db_path = "/" + db_path
+    elif ":///" in db_url:
+        db_path = db_url.split(":///")[1]
+    else:
+        db_path = db_url.split("://")[1]
     
     # Ensure directory exists
-    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    db_dir = Path(db_path).parent
+    db_dir.mkdir(parents=True, exist_ok=True)
     
     # Create database using aiosqlite
     async with aiosqlite.connect(db_path) as db:

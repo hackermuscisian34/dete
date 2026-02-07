@@ -9,6 +9,7 @@ from api.routes.devices import router as devices_router
 from api.routes.threats import router as threats_router
 from api.routes.actions import router as actions_router
 from api.routes.system import router as system_router
+from api.routes.telemetry import router as telemetry_router
 import logging
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(threats_router, prefix="/api/v1/threats", tags=["Threats"])
     app.include_router(actions_router, prefix="/api/v1/actions", tags=["Actions"])
     app.include_router(system_router, prefix="/api/v1/system", tags=["System"])
+    app.include_router(telemetry_router, prefix="/api/v1", tags=["Telemetry"])
     
     @app.on_event("startup")
     async def startup_event():

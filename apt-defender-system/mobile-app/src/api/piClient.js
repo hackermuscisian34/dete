@@ -4,7 +4,9 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_BASE_URL = 'http://10.232.50.53:8443/api/v1'; // Updated to match PC IP
+// REPLACE_WITH_YOUR_PI_AGENT_IP: Port 8443 is default for Pi Agent
+const API_BASE_URL = 'http://10.253.242.53:8443/api/v1';
+// const API_BASE_URL = 'http://10.0.2.2:8443/api/v1'; // Use this for Android Emulator -> Localhost
 
 class PiAPIClient {
     constructor() {
@@ -124,8 +126,9 @@ class PiAPIClient {
         return await this.client.get(`/devices/${deviceId}/scan/status`);
     }
 
-    getScanReportUrl(deviceId, scanId) {
-        return `${API_BASE_URL}/devices/${deviceId}/scan/${scanId}/report`;
+    async getScanReportUrl(deviceId, scanId) {
+        const token = await this.getToken();
+        return `${API_BASE_URL}/devices/${deviceId}/scan/${scanId}/report?token=${token}`;
     }
 
     async getDeviceProcesses(deviceId) {
@@ -142,6 +145,19 @@ class PiAPIClient {
 
     async unpairDevice(deviceId) {
         return await this.client.delete(`/devices/${deviceId}`);
+    }
+
+    async getDeviceTelemetry(deviceId) {
+        return await this.client.get(`/devices/${deviceId}/telemetry`);
+    }
+
+    async registerDeviceManual(deviceIp, deviceHostname) {
+        return await this.client.post('/auth/register-device-manual', {
+            device_ip: deviceIp,
+            device_hostname: deviceHostname,
+            device_os: 'windows',
+            device_os_version: '10'
+        });
     }
 
     // Threats

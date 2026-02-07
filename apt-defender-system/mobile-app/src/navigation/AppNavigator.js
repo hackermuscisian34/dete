@@ -10,6 +10,7 @@ import DeviceDetailScreen from '../screens/DeviceDetailScreen';
 import DeviceProcessesScreen from '../screens/DeviceProcessesScreen';
 import DeviceConnectionsScreen from '../screens/DeviceConnectionsScreen';
 import DeviceTimelineScreen from '../screens/DeviceTimelineScreen';
+import DeviceTelemetryScreen from '../screens/DeviceTelemetryScreen';
 import AddDeviceScreen from '../screens/AddDeviceScreen';
 
 const Stack = createNativeStackNavigator();
@@ -67,6 +68,11 @@ const AppNavigator = () => {
                     name="DeviceTimeline"
                     component={DeviceTimelineScreen}
                     options={{ title: 'Timeline' }}
+                />
+                <Stack.Screen
+                    name="DeviceTelemetry"
+                    component={DeviceTelemetryScreen}
+                    options={{ title: 'System Telemetry' }}
                 />
                 <Stack.Screen
                     name="AddDevice"

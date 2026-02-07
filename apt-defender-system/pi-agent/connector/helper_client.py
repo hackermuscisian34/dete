@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 class HelperTLSConfigurationError(RuntimeError):
     pass
 
+
+class HelperServiceUnavailableError(RuntimeError):
+    pass
+
 class HelperClient:
     """Client for communicating with Helper service on target PC"""
     
@@ -61,14 +65,20 @@ class HelperClient:
                 return response.json()
         
         except (httpx.ConnectError, httpx.TransportError, ssl.SSLError) as e:
-            error_str = str(e)
+            error_str = str(e).strip()
+            error_details = error_str or repr(e)
+
+            cause = getattr(e, "__cause__", None)
+            if cause:
+                error_details = f"{error_details} (cause: {cause})"
+
             if "TLSV13_ALERT_CERTIFICATE_REQUIRED" in error_str or "certificate required" in error_str.lower():
                 if not self.cert_path:
                     raise HelperTLSConfigurationError(
                         "Helper service requires a client certificate (mTLS) but HELPER_CLIENT_CERT/HELPER_CLIENT_KEY are not configured"
                     )
-                logger.error(f"Helper service required a client certificate but connection failed: {e}")
-                raise Exception(f"Cannot reach device: {e}")
+                logger.error(f"Helper service required a client certificate but connection failed to {url}: {error_details}")
+                raise HelperServiceUnavailableError(f"Cannot reach helper at {url}: {error_details}")
 
             if "TLSV1_ALERT_UNKNOWN_CA" in error_str or "unknown ca" in error_str.lower():
                 logger.error(f"Helper service rejected our certificate chain (unknown CA): {e}")
@@ -77,15 +87,15 @@ class HelperClient:
                 )
 
             if "SSL" in error_str or "TLS" in error_str:
-                logger.error(f"TLS handshake error connecting to Helper service: {e}")
-                raise Exception(f"Cannot reach device: {e}")
+                logger.error(f"TLS handshake error connecting to Helper service at {url}: {error_details}")
+                raise HelperServiceUnavailableError(f"TLS handshake error connecting to helper at {url}: {error_details}")
             else:
-                logger.error(f"Connection error (non-SSL): {e}")
-                raise Exception(f"Cannot reach device: {e}")
+                logger.error(f"Connection error (non-SSL) connecting to Helper service at {url}: {error_details}")
+                raise HelperServiceUnavailableError(f"Cannot reach helper at {url}: {error_details}")
         
         except httpx.TimeoutException:
             logger.error(f"Timeout connecting to Helper service: {url}")
-            raise Exception("Device is not responding")
+            raise HelperServiceUnavailableError(f"Timeout connecting to helper at {url}")
         except httpx.HTTPStatusError as e:
             logger.error(f"Helper service HTTP error: {e.response.status_code} - {e}")
             raise Exception(f"Device error: {e.response.status_code}")
@@ -156,3 +166,8 @@ class HelperClient:
     async def get_scan_status(self) -> Dict:
         """Get the progress of an active scan"""
         return await self._request("GET", "/scan/status")
+    
+    async def get_telemetry(self) -> Dict:
+        """Get system telemetry (CPU, RAM, Disk, Network stats)"""
+        return await self._request("GET", "/telemetry")
+

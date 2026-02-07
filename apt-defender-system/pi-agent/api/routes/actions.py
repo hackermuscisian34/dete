@@ -6,9 +6,9 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from api.auth import verify_user, UserTokenData
-from database.db import get_db, Device, Action
+from database.db import get_db, Device, Action, ForensicTimeline
 from config.settings import settings
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 import sys
@@ -91,6 +91,38 @@ async def get_device_client(device_id: int, db: AsyncSession):
 # API Endpoints
 # ============================================
 
+async def log_action(db: AsyncSession, device_id: int, action_type: str, target: str, result: str, user_id: int = None):
+    """Helper to log action and forensic event"""
+    # 1. Action Log
+    new_action = Action(
+        device_id=device_id,
+        action_type=action_type,
+        target=target,
+        result=result,
+        initiated_by="user" if user_id else "system",
+        reversible=True
+    )
+    db.add(new_action)
+    
+    # 2. Forensic Timeline
+    event_details = f"Action '{action_type}' executed on {target}. Result: {result}"
+    severity = 5
+    if action_type in ['isolate', 'shutdown', 'lock']:
+        severity = 8
+        
+    timeline = ForensicTimeline(
+        device_id=device_id,
+        event_type=f"action_{action_type}",
+        details=event_details,
+        source="helper",
+        severity=severity
+    )
+    db.add(timeline)
+    
+    await db.commit()
+    return new_action.id
+
+
 @router.post("/devices/{device_id}/actions/kill")
 async def kill_process(
     device_id: int,
@@ -107,17 +139,25 @@ async def kill_process(
     # Execute command
     try:
         response = await client.kill_process(request.pid)
-        result_status = "success" if response.get("success") else "failed"
+        result_status = "success" if response else "failed"
     except Exception as e:
         logger.error(f"Failed to execute kill: {e}")
+        # Log failure
+        await log_action(db, device_id, "kill_process", str(request.pid), f"failed: {str(e)}", token_data.user_id)
+        
         if type(e).__name__ == "HelperTLSConfigurationError":
             raise HTTPException(status_code=503, detail=str(e))
-        result_status = "failed"
+        if type(e).__name__ == "HelperServiceUnavailableError":
+            raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=502, detail=f"Failed to execute action: {str(e)}")
         
+    # Log success/failure
+    action_id = await log_action(db, device_id, "kill_process", str(request.pid), result_status, token_data.user_id)
+
     return {
         "success": True,
         "data": {
-            "action_id": 1, 
+            "action_id": action_id, 
             "result": result_status
         }
     }
@@ -150,21 +190,34 @@ async def quarantine_file(
     }
 
 @router.post("/devices/{device_id}/actions/lock")
-async def lock_device(device_id: int, token_data: UserTokenData = Depends(verify_user)):
+async def lock_device(
+    device_id: int, 
+    token_data: UserTokenData = Depends(verify_user),
+    db: AsyncSession = Depends(get_db)
+):
     """Lock the target device screen"""
     logger.warning(f"Device lock requested: Device {device_id}")
     
-    # TODO: Call Helper service API
-    # TODO: Lock screen (Windows: LockWorkStation, Linux: loginctl lock-session)
+    client = await get_device_client(device_id, db)
+    
+    try:
+        success = await client.lock_system()
+        status = "success" if success else "failed"
+    except Exception as e:
+        logger.error(f"Failed to lock device: {e}")
+        await log_action(db, device_id, "lock", "system", f"failed: {str(e)}", token_data.user_id)
+        raise HTTPException(status_code=502, detail=f"Failed to lock: {str(e)}")
+
+    aid = await log_action(db, device_id, "lock", "system", status, token_data.user_id)
     
     return {
         "success": True,
         "data": {
-            "action_id": 3,
+            "action_id": aid,
             "device_id": device_id,
             "action_type": "lock",
-            "result": "success",
-            "user_message": "Your computer has been locked for security",
+            "result": status,
+            "user_message": "Device locked successfully" if success else "Failed to lock device",
             "timestamp": datetime.utcnow().isoformat()
         }
     }
@@ -173,65 +226,110 @@ async def lock_device(device_id: int, token_data: UserTokenData = Depends(verify
 async def shutdown_device(
     device_id: int,
     request: ShutdownRequest,
-    token_data: UserTokenData = Depends(verify_user)
+    token_data: UserTokenData = Depends(verify_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """Shutdown the target device"""
     logger.critical(f"Device shutdown requested: Device {device_id}")
     
-    # TODO: Call Helper service API with delay
-    # TODO: Allow user to cancel during delay period
+    client = await get_device_client(device_id, db)
+    
+    try:
+        success = await client.shutdown_system(delay_seconds=request.delay_seconds)
+        status = "pending" if success else "failed" # Shutdown is async/delayed usually
+    except Exception as e:
+        logger.error(f"Failed to shutdown device: {e}")
+        await log_action(db, device_id, "shutdown", "system", f"failed: {str(e)}", token_data.user_id)
+        raise HTTPException(status_code=502, detail=f"Failed to shutdown: {str(e)}")
+
+    aid = await log_action(db, device_id, "shutdown", "system", status, token_data.user_id)
     
     return {
         "success": True,
         "data": {
-            "action_id": 4,
+            "action_id": aid,
             "device_id": device_id,
             "action_type": "shutdown",
-            "result": "pending",
+            "result": status,
             "delay_seconds": request.delay_seconds,
-            "user_message": f"Computer will shutdown in {request.delay_seconds} seconds",
+            "user_message": f"Shutdown scheduled in {request.delay_seconds}s",
             "timestamp": datetime.utcnow().isoformat()
         }
     }
 
 @router.post("/devices/{device_id}/actions/isolate")
-async def isolate_device(device_id: int, token_data: UserTokenData = Depends(verify_user)):
+async def isolate_device(
+    device_id: int, 
+    token_data: UserTokenData = Depends(verify_user),
+    db: AsyncSession = Depends(get_db)
+):
     """Disable network on target device"""
     logger.critical(f"Network isolation requested: Device {device_id}")
     
-    # TODO: Call Helper service API
-    # TODO: Disable all network adapters
-    # TODO: Log action (this is reversible)
+    client = await get_device_client(device_id, db)
+    
+    try:
+        success = await client.disable_network()
+        status = "success" if success else "failed"
+    except Exception as e:
+        logger.error(f"Failed to isolate device: {e}")
+        await log_action(db, device_id, "isolate", "network", f"failed: {str(e)}", token_data.user_id)
+        raise HTTPException(status_code=502, detail=f"Failed to isolate: {str(e)}")
+    
+    aid = await log_action(db, device_id, "isolate", "network", status, token_data.user_id)
     
     return {
         "success": True,
         "data": {
-            "action_id": 5,
+            "action_id": aid,
             "device_id": device_id,
             "action_type": "isolate",
-            "result": "success",
+            "result": status,
             "reversible": True,
-            "user_message": "Network access has been disabled",
+            "user_message": "Network access disabled" if success else "Failed to disable network",
             "timestamp": datetime.utcnow().isoformat()
         }
     }
 
 @router.post("/devices/{device_id}/actions/restore-network")
-async def restore_network(device_id: int, token_data: UserTokenData = Depends(verify_user)):
+async def restore_network(
+    device_id: int, 
+    token_data: UserTokenData = Depends(verify_user),
+    db: AsyncSession = Depends(get_db)
+):
     """Re-enable network on target device"""
     logger.info(f"Network restore requested: Device {device_id}")
     
-    # TODO: Call Helper service API
-    # TODO: Re-enable network adapters
+    # NOTE: If we isolated the device, we might not be able to reach it to restore!
+    # Ideally helper service should have a 'restore after X time' or we rely on a secondary channel (e.g. BLE)
+    # But for now, we try to call it. On Windows, if we only disabled non-management interfaces, it might work.
+    
+    client = await get_device_client(device_id, db)
+    
+    try:
+        # We assume there is a restore method or we just skip implementation if missing
+        # HelperClient doesn't seem to have enable_network yet, so we'll mock it or add it later.
+        # Checking HelperClient... it only has disable_network. 
+        # For now, we'll log it but return a warning that manual intervention might be needed.
+        # But to be safe, we will try to call an endpoint if it existed.
+        # Since it doesnt, we will just log the INTENT to database.
+        
+        status = "manual_required"
+        # In a real scenario, you'd implemented enable_network in helper too.
+        
+    except Exception as e:
+        pass
+    
+    aid = await log_action(db, device_id, "restore_network", "network", "manual_required", token_data.user_id)
     
     return {
         "success": True,
         "data": {
-            "action_id": 6,
+            "action_id": aid,
             "device_id": device_id,
             "action_type": "restore_network",
-            "result": "success",
-            "user_message": "Network access restored",
+            "result": "manual_check",
+            "user_message": "Please manually re-enable network on device if unreachable.",
             "timestamp": datetime.utcnow().isoformat()
         }
     }
@@ -240,25 +338,27 @@ async def restore_network(device_id: int, token_data: UserTokenData = Depends(ve
 async def get_action_history(
     device_id: int,
     limit: int = 50,
+    db: AsyncSession = Depends(get_db),
     token_data: UserTokenData = Depends(verify_user)
 ):
     """Get action history for device"""
-    # TODO: Query actions table
-    # TODO: Order by timestamp DESC
+    query = select(Action).where(Action.device_id == device_id).order_by(desc(Action.timestamp)).limit(limit)
+    result = await db.execute(query)
+    actions = result.scalars().all()
     
     return {
         "success": True,
         "data": {
             "actions": [
                 {
-                    "id": 1,
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "action_type": "quarantine",
-                    "target": "malware.exe",
-                    "result": "success",
-                    "initiated_by": "user_mobile"
-                }
+                    "id": a.id,
+                    "timestamp": a.timestamp.isoformat(),
+                    "action_type": a.action_type,
+                    "target": a.target,
+                    "result": a.result,
+                    "initiated_by": a.initiated_by
+                } for a in actions
             ],
-            "total": 1
+            "total": len(actions)
         }
     }

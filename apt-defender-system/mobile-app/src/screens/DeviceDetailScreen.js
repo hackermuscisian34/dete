@@ -78,9 +78,9 @@ export default function DeviceDetailScreen({ route, navigation }) {
         }
     };
 
-    const handleViewReport = () => {
+    const handleViewReport = async () => {
         if (!scanStatus?.scan_id) return;
-        const url = piClient.getScanReportUrl(deviceId, scanStatus.scan_id);
+        const url = await piClient.getScanReportUrl(deviceId, scanStatus.scan_id);
         Linking.openURL(url);
     };
 
@@ -314,6 +314,13 @@ export default function DeviceDetailScreen({ route, navigation }) {
             {/* Quick Links */}
             <View style={styles.linksCard}>
                 <Text style={styles.sectionTitle}>More</Text>
+
+                <TouchableOpacity
+                    style={styles.linkButton}
+                    onPress={() => navigation.navigate('DeviceTelemetry', { deviceId })}
+                >
+                    <Text style={styles.linkText}>📊 System Telemetry →</Text>
+                </TouchableOpacity>
 
                 <TouchableOpacity
                     style={styles.linkButton}

@@ -1,7 +1,7 @@
 """
 Authentication and JWT handling
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 import bcrypt
@@ -119,7 +119,34 @@ def verify_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -
         return UserTokenData(user_id=user_id, email=email, role=role)
     
     except JWTError as e:
-        logger.error(f"User JWT validation error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session"
+        )
+
+def verify_user_from_query(token: str = Query(..., description="JWT Token")) -> UserTokenData:
+    """Verify User JWT token from query parameter"""
+    try:
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm]
+        )
+        
+        user_id: int = payload.get("user_id")
+        email: str = payload.get("email")
+        role: str = payload.get("role")
+        
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid user authentication credentials"
+            )
+        
+        return UserTokenData(user_id=user_id, email=email, role=role)
+    
+    except JWTError as e:
+        logger.error(f"User JWT validation error (query param): {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired session"
@@ -360,3 +387,130 @@ async def login(user_in: UserLogin, db: AsyncSession = Depends(get_db)):
             }
         }
     }
+
+@router.post("/register-device-manual")
+async def register_device_manual(
+    device_ip: str,
+    device_hostname: str,
+    device_os: str = "windows",
+    device_os_version: str = "10",
+    db: AsyncSession = Depends(get_db),
+    token_data: UserTokenData = Depends(verify_user)
+):
+    """
+    Manually register a PC by IP address (no pairing code needed)
+    Used when mobile app knows the PC's IP and wants to add it directly
+    """
+    logger.info(f"Manual device registration: {device_hostname} ({device_ip}) by user {token_data.user_id}")
+    
+    # Check if device already exists for this user
+    from connector.helper_client import HelperClient, HelperServiceUnavailableError
+    
+    # Try to contact the PC first to verify it's reachable
+    try:
+        helper_url = f"http://{device_ip}:7890"
+        client = HelperClient(helper_url)
+        health = await client.health_check()
+        
+        if not health.get('success'):
+            raise HTTPException(status_code=503, detail="PC helper service is not responding")
+            
+    except HelperServiceUnavailableError:
+        raise HTTPException(
+            status_code=503, 
+            detail=f"Cannot reach PC at {device_ip}. Make sure the Helper Service is running."
+        )
+    except Exception as e:
+        logger.error(f"Failed to verify PC connectivity: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to connect to PC: {str(e)}"
+        )
+    
+    # Check if device already exists by hostname or IP
+    result = await db.execute(
+        select(Device).where(
+            (Device.hostname == device_hostname) | (Device.ip_address == device_ip)
+        )
+    )
+    existing_device = result.scalar_one_or_none()
+    
+    if existing_device:
+        # Update existing device
+        existing_device.ip_address = device_ip
+        existing_device.hostname = device_hostname
+        existing_device.os = device_os
+        existing_device.os_version = device_os_version
+        existing_device.last_seen = datetime.utcnow()
+        existing_device.status = "online"
+        device_id = existing_device.id
+        logger.info(f"Updated existing device: {device_id}")
+    else:
+        # Create new device
+        new_device = Device(
+            hostname=device_hostname,
+            ip_address=device_ip,
+            os=device_os,
+            os_version=device_os_version,
+            status="online",
+           paired_at=datetime.utcnow(),
+            last_seen=datetime.utcnow()
+        )
+        db.add(new_device)
+        await db.flush()
+        device_id = new_device.id
+        logger.info(f"Registered new device: {device_id}")
+    
+    # Link device to user if not already linked
+    result = await db.execute(
+        select(DeviceUser).where(
+            DeviceUser.device_id == device_id,
+            DeviceUser.user_id == token_data.user_id
+        )
+    )
+    existing_link = result.scalar_one_or_none()
+    
+    if not existing_link:
+        new_link = DeviceUser(
+            device_id=device_id,
+            user_id=token_data.user_id,
+            access_level='owner'
+        )
+        db.add(new_link)
+        logger.info(f"Linked device {device_id} to user {token_data.user_id}")
+    
+    await db.commit()
+    
+    # Notify the PC that it has been registered with this Pi Agent
+    try:
+        import httpx
+        import socket
+        
+        # Get this Pi's IP address (best guess - first non-loopback)
+        pi_ip = socket.gethostbyname(socket.gethostname())
+        
+        notification_url = f"http://{device_ip}:7890/api/v1/register-notification"
+        async with httpx.AsyncClient(timeout=5.0) as notify_client:
+            await notify_client.post(
+                notification_url,
+                json={
+                    "pi_agent_ip": pi_ip,
+                    "registered": True
+                },
+                headers={"Authorization": "Bearer change-me-in-production"}
+            )
+        logger.info(f"Notified PC at {device_ip} of registration with Pi at {pi_ip}")
+    except Exception as notify_err:
+        logger.warning(f"Failed to notify PC of registration: {notify_err}")
+        # Don't fail the whole registration if notification fails
+    
+    return {
+        "success": True,
+        "data": {
+            "device_id": device_id,
+            "hostname": device_hostname,
+            "ip_address": device_ip,
+            "message": "Device registered successfully"
+        }
+    }
+

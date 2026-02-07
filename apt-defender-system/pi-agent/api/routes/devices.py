@@ -5,10 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
-from api.auth import verify_user, UserTokenData
-from sqlalchemy import select, func, desc
+from api.auth import verify_user, UserTokenData, verify_user_from_query
+from sqlalchemy import select, func, desc, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from database.db import get_db, Device, Threat, Scan, DeviceUser
+from database.db import get_db, Device, Threat, Scan, DeviceUser, ForensicTimeline
 from config.settings import settings
 import logging
 import sys
@@ -113,12 +113,13 @@ async def list_devices(
         )
         
         # Get last scan
-        last_scan = await db.execute(
+        last_scan_result = await db.execute(
             select(Scan.completed_at)
             .where(Scan.device_id == device.id, Scan.status == 'completed')
             .order_by(desc(Scan.completed_at))
             .limit(1)
         )
+        last_scan_val = last_scan_result.scalar()
         
         device_list.append({
             "id": device.id,
@@ -129,7 +130,7 @@ async def list_devices(
             "last_seen": device.last_seen.isoformat() if device.last_seen else None,
             "ip_address": device.ip_address,
             "active_threats": threat_count.scalar() or 0,
-            "last_scan": last_scan.scalar().isoformat() if last_scan.scalar() else None
+            "last_scan": last_scan_val.isoformat() if last_scan_val else None
         })
     
     return {
@@ -212,6 +213,17 @@ async def trigger_scan(
         db.add(new_scan)
         await db.commit()
         await db.refresh(new_scan)
+
+        # Log to timeline
+        timeline_entry = ForensicTimeline(
+            device_id=device_id,
+            event_type="scan_started",
+            details=f"Started {request.scan_type} scan (ID: {new_scan.id})",
+            source="helper",
+            severity=1
+        )
+        db.add(timeline_entry)
+        await db.commit()
         
         return {
             "success": True,
@@ -227,6 +239,8 @@ async def trigger_scan(
         if isinstance(e, HTTPException):
             raise e
         if type(e).__name__ == "HelperTLSConfigurationError":
+            raise HTTPException(status_code=503, detail=str(e))
+        if type(e).__name__ == "HelperServiceUnavailableError":
             raise HTTPException(status_code=503, detail=str(e))
         raise HTTPException(status_code=502, detail=f"Failed to reach device: {str(e)}")
 
@@ -272,6 +286,28 @@ async def get_scan_status(
                         db_scan.completed_at = datetime.utcnow()
                     
                     await db.commit()
+
+                    # Log completion to timeline
+                    if db_scan.status == 'completed':
+                        # Completion event
+                        db.add(ForensicTimeline(
+                            device_id=device_id,
+                            event_type="scan_completed",
+                            details=f"Scan {db_scan.id} completed. Checked {db_scan.files_checked} files.",
+                            source="helper",
+                            severity=1
+                        ))
+                        
+                        # Threat event if any found
+                        if db_scan.threats_found > 0:
+                            db.add(ForensicTimeline(
+                                device_id=device_id,
+                                event_type="threat_detected",
+                                details=f"Scan {db_scan.id} found {db_scan.threats_found} threats!",
+                                source="helper",
+                                severity=10
+                            ))
+                        await db.commit()
             except Exception as poll_err:
                 logger.warning(f"Failed to poll scan status for device {device_id}: {poll_err}")
 
@@ -336,6 +372,8 @@ async def get_processes(
             raise e
         if type(e).__name__ == "HelperTLSConfigurationError":
             raise HTTPException(status_code=503, detail=str(e))
+        if type(e).__name__ == "HelperServiceUnavailableError":
+            raise HTTPException(status_code=503, detail=str(e))
         raise HTTPException(status_code=502, detail=f"Failed to reach device: {str(e)}")
 
 @router.get("/{device_id}/connections")
@@ -370,6 +408,8 @@ async def get_connections(
         if isinstance(e, HTTPException):
             raise e
         if type(e).__name__ == "HelperTLSConfigurationError":
+            raise HTTPException(status_code=503, detail=str(e))
+        if type(e).__name__ == "HelperServiceUnavailableError":
             raise HTTPException(status_code=503, detail=str(e))
         raise HTTPException(status_code=502, detail=f"Failed to reach device: {str(e)}")
 
@@ -418,7 +458,7 @@ async def get_forensic_timeline(
 async def get_scan_report(
     device_id: int,
     scan_id: int,
-    token_data: UserTokenData = Depends(verify_user),
+    token_data: UserTokenData = Depends(verify_user_from_query),
     db: AsyncSession = Depends(get_db)
 ):
     """Generate a security report for a specific scan"""
@@ -438,6 +478,20 @@ async def get_scan_report(
     
     result = await db.execute(select(Device).where(Device.id == device_id))
     device = result.scalar_one_or_none()
+    
+    # Get detailed threats if any
+    threats = []
+    if db_scan.threats_found > 0:
+        # Assuming we link threats to scans implicitly via time or device, 
+        # or we update the schema to link threats to scans.
+        # For now, let's get active threats for this device detected around scan completion time
+        # Or just get all non-dismissed threats for simplicity in this report view
+        t_result = await db.execute(
+            select(Threat)
+            .where(Threat.device_id == device_id, Threat.dismissed == False)
+            .order_by(desc(Threat.severity))
+        )
+        threats = t_result.scalars().all()
 
     # Generate HTML report
     html_content = f"""
@@ -487,9 +541,28 @@ async def get_scan_report(
 
             <h2>Verdict</h2>
             <p>
-                { "⚠️ ACTION REQUIRED: Several suspicious items were detected. Please review the 'Threats' section in the mobile app." if db_scan.threats_found > 0 
+                { "⚠️ ACTION REQUIRED: Several suspicious items were detected." if db_scan.threats_found > 0 
                   else "✅ CLEAN: No known threats were detected during this scan. Your device is protected." }
             </p>
+            
+            """ + (f"""
+            <div style="margin-top: 30px;">
+                <h2 style="color: #e74c3c;">Threats Detected</h2>
+                <table>
+                   <thead>
+                       <tr>
+                           <th>Severity</th>
+                           <th>Type</th>
+                           <th>File/Process</th>
+                           <th>Info</th>
+                       </tr>
+                   </thead>
+                   <tbody>
+                       {''.join([f'<tr><td><span style="background:{ "#e74c3c" if t.severity >= 8 else "#f39c12"}; color: white; padding: 2px 6px; border-radius: 4px;">{t.severity}/10</span></td><td>{t.type}</td><td style="font-family: monospace;">{t.indicator}</td><td>{t.explanation}</td></tr>' for t in threats])}
+                   </tbody>
+                </table>
+            </div>
+            """ if db_scan.threats_found > 0 else "") + f"""
         </div>
         <div style="text-align: center; margin-top: 20px; color: #888; font-size: 0.8em;">
             Generated by APT Defender System V2.0

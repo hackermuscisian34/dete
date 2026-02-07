@@ -120,7 +120,38 @@ export default function AddDeviceScreen({ navigation }) {
                         onChangeText={setManualHostname}
                     />
 
-                    <TouchableOpacity style={styles.manualButton} onPress={() => Alert.alert('Manual Add', 'This will tell the Pi to look for this PC.')}>
+                    <TouchableOpacity
+                        style={styles.manualButton}
+                        onPress={async () => {
+                            if (!manualIp || !manualHostname) {
+                                Alert.alert('Missing Info', 'Please enter both IP address and hostname');
+                                return;
+                            }
+
+                            setLoading(true);
+                            try {
+                                const response = await piClient.registerDeviceManual(manualIp, manualHostname);
+                                if (response.success) {
+                                    Alert.alert(
+                                        'Success',
+                                        `PC "${response.data.hostname}" added successfully!`,
+                                        [{ text: 'OK', onPress: () => navigation.navigate('Devices') }]
+                                    );
+                                }
+                            } catch (error) {
+                                console.error('Manual registration error:', error);
+                                Alert.alert(
+                                    'Connection Failed',
+                                    'Could not connect to PC. Make sure:\n' +
+                                    '1. Helper service is running on PC\n' +
+                                    '2. IP address is correct\n' +
+                                    '3. Both devices are on same network'
+                                );
+                            } finally {
+                                setLoading(false);
+                            }
+                        }}
+                    >
                         <Text style={styles.manualButtonText}>Add Manually</Text>
                     </TouchableOpacity>
                 </View>

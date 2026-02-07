@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """Application settings"""
     
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(Path(__file__).resolve().parent.parent / ".env"),
         env_file_encoding="utf-8",
         extra="ignore"
     )
@@ -86,7 +86,10 @@ class Settings(BaseSettings):
     SUPABASE_KEY: str = ""
     
     # Helper service configuration
-    helper_port: int = 7890
+    helper_port: int = Field(
+        default=7890,
+        validation_alias="HELPER_PORT"
+    )
     helper_timeout_seconds: int = 30
     helper_heartbeat_interval_seconds: int = 60
 
